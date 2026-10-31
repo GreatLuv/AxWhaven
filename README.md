@@ -34,5 +34,5 @@ A clean anime wallpaper manager for Android with built-in collections and integr
 ## Contributors
 
 - **[GreatLuv](https://github.com/GreatLuv)** — Creator & Maintainer
-- **Antigravity CLI** (powered by Gemini 3.8 Flash, Google DeepMind) — Autonomous AI Pair Programmer
+- **Gemini** (via Antigravity CLI, Google DeepMind) — Autonomous AI Pair Programmer
 
