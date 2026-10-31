@@ -30,3 +30,9 @@ A clean anime wallpaper manager for Android with built-in collections and integr
 | Preferences & Themes | Storage & Directory Settings |
 | :---: | :---: |
 | <img src="screenshots/setting00.png" width="360" alt="Settings" /> | <img src="screenshots/setting01.png" width="360" alt="Storage Settings" /> |
+
+## Contributors
+
+- **[GreatLuv](https://github.com/GreatLuv)** — Creator & Maintainer
+- **Antigravity CLI** (powered by Gemini 3.8 Flash, Google DeepMind) — Autonomous AI Pair Programmer
+
