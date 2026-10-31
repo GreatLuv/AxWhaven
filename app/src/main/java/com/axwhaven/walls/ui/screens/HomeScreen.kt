@@ -3,29 +3,29 @@ package com.axwhaven.walls.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -48,24 +48,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.axwhaven.walls.HomeNavigationTab
@@ -76,6 +76,10 @@ import com.axwhaven.walls.model.WallpaperTarget
 import com.axwhaven.walls.ui.components.GlassmorphicBadge
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun HomeScreen(
@@ -91,6 +95,72 @@ fun HomeScreen(
 
     val collectionsGridState = rememberLazyGridState()
     val allWallpapersGridState = rememberLazyGridState()
+
+    // Bottom clearance: 110.dp + WindowInsets.navigationBars
+    val density = LocalDensity.current
+    val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomClearance = 110.dp + navBottomInset
+
+    // Scroll Direction Vanish (10.dp threshold + anti-feedback loop settle)
+    val scrollThresholdPx = remember(density) { with(density) { 10.dp.toPx() } }
+    var isScrollingDown by remember { mutableStateOf(false) }
+    var scrollAccumulator by remember { mutableFloatStateOf(0f) }
+    var lastVisibilityChangeTime by remember { mutableLongStateOf(0L) }
+
+    val isAllWallpapers = uiState.homeTab == HomeNavigationTab.ALL_WALLPAPERS
+    val activeGridState = if (isAllWallpapers) allWallpapersGridState else collectionsGridState
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val now = System.currentTimeMillis()
+                // Anti-feedback-loop: ignore scroll deltas for ~350ms after visibility toggle
+                if (now - lastVisibilityChangeTime < 350L) {
+                    return Offset.Zero
+                }
+
+                val delta = available.y
+                if (delta < 0) {
+                    // Scrolling down
+                    if (scrollAccumulator > 0) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator < -scrollThresholdPx && !isScrollingDown) {
+                        isScrollingDown = true
+                        lastVisibilityChangeTime = now
+                        scrollAccumulator = 0f
+                    }
+                } else if (delta > 0) {
+                    // Scrolling up
+                    if (scrollAccumulator < 0) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator > scrollThresholdPx && isScrollingDown) {
+                        isScrollingDown = false
+                        lastVisibilityChangeTime = now
+                        scrollAccumulator = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Always show header + dice when at the top (firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0)
+    LaunchedEffect(activeGridState) {
+        snapshotFlow {
+            activeGridState.firstVisibleItemIndex == 0 && activeGridState.firstVisibleItemScrollOffset == 0
+        }.collect { isAtTop ->
+            if (isAtTop && isScrollingDown) {
+                isScrollingDown = false
+                scrollAccumulator = 0f
+            }
+        }
+    }
+
+    // Reset to "shown" on tab change
+    LaunchedEffect(uiState.homeTab) {
+        isScrollingDown = false
+        scrollAccumulator = 0f
+    }
 
     BoxWithConstraints(
         modifier = modifier
@@ -200,7 +270,7 @@ fun HomeScreen(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = bottomClearance),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
@@ -224,86 +294,102 @@ fun HomeScreen(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp)
+                    .nestedScroll(nestedScrollConnection)
             ) {
-                // 1. TOP APP HEADER BAR
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 4.dp)
+                // 1. TOP APP HEADER BAR (Vanishes on scroll-down, reappears on scroll-up or full top)
+                AnimatedVisibility(
+                    visible = !isScrollingDown,
+                    enter = slideInVertically(
+                        animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                        initialOffsetY = { -it }
+                    ) + expandVertically(
+                        animationSpec = ExpressiveMotion.DefaultSpatialIntSize,
+                        expandFrom = Alignment.Top
+                    ) + fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat),
+                    exit = slideOutVertically(
+                        animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                        targetOffsetY = { -it }
+                    ) + shrinkVertically(
+                        animationSpec = ExpressiveMotion.DefaultSpatialIntSize,
+                        shrinkTowards = Alignment.Top
+                    ) + fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
                 ) {
-                    // App Logo Icon: 40dp x 40dp round circle with app icon
-                    Box(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(if (colors.isGlassmorphism) Color(0x2EFFFFFF) else colors.surfaceElevated)
-                            .border(
-                                1.dp,
-                                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
-                                else Brush.linearGradient(listOf(colors.primaryAccent, colors.cardBorder)),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(top = 10.dp, bottom = 4.dp)
                     ) {
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(id = com.axwhaven.walls.R.drawable.app_icon),
-                            contentDescription = "AxWhaven Icon",
-                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
-                    // Title & Subtitle Stack
-                    Column(
-                        modifier = Modifier
-                            .padding(start = 12.dp)
-                            .weight(1f)
-                    ) {
-                        Text(
-                            text = "AxWhaven",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary,
-                            letterSpacing = (-0.5).sp
-                        )
-                        Text(
-                            text = "Curated anime gallery",
-                            fontSize = 12.5.sp,
-                            color = colors.textSecondary
-                        )
-                    }
-
-                    // Right side: Total Arts Count Pill Badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(colors.mintPillBg)
-                            .border(1.dp, colors.mintPillBorder, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(colors.mintText)
+                        // App Logo Icon: 40dp x 40dp round circle with app icon
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (colors.isGlassmorphism) Color(0x2EFFFFFF) else colors.surfaceElevated)
+                                .border(
+                                    1.dp,
+                                    if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
+                                    else Brush.linearGradient(listOf(colors.primaryAccent, colors.cardBorder)),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.foundation.Image(
+                                painter = androidx.compose.ui.res.painterResource(id = com.axwhaven.walls.R.drawable.app_icon),
+                                contentDescription = "AxWhaven Icon",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
+                        // Title & Subtitle Stack
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .weight(1f)
+                        ) {
                             Text(
-                                text = "${uiState.totalArtsCount} arts",
-                                color = colors.mintText,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = "AxWhaven",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = colors.textPrimary,
+                                letterSpacing = (-0.5).sp
                             )
+                            Text(
+                                text = "Curated anime gallery",
+                                fontSize = 12.5.sp,
+                                color = colors.textSecondary
+                            )
+                        }
+
+                        // Right side: Total Arts Count Pill Badge
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(colors.mintPillBg)
+                                .border(1.dp, colors.mintPillBorder, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(colors.mintText)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "${uiState.totalArtsCount} arts",
+                                    color = colors.mintText,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
 
-                // 2. SEGMENTED NAVIGATION TOGGLE ("Collections" | "All Wallpapers")
-                val isCollections = uiState.homeTab == HomeNavigationTab.COLLECTIONS
-                val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
-
+                // 2. SEGMENTED NAVIGATION TOGGLE ("All Wallpapers" [0] | "Collections" [1])
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -330,19 +416,16 @@ fun HomeScreen(
                     contentAlignment = Alignment.CenterStart
                 ) {
                     val pillWidth = maxWidth / 2
-                    val targetTabOffset = if (isCollections) 0f else 1f
+                    val targetTabOffset = if (isAllWallpapers) 0f else 1f
                     val animatedTabOffset by animateFloatAsState(
                         targetValue = targetTabOffset,
-                        animationSpec = tween(
-                            durationMillis = 170,
-                            easing = EmphasizedDecelerateEasing
-                        ),
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
                         label = "SegmentedPillOffset"
                     )
 
                     val activeGlassPill = if (colors.isGlassmorphism) Color(0x40FFFFFF) else colors.surfaceElevated
 
-                    // Smooth horizontal sliding indicator pill
+                    // Smooth horizontal sliding indicator pill with Expressive fastSpatial spring
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
@@ -362,62 +445,59 @@ fun HomeScreen(
                             )
                     )
 
-                    val collectionsTextColor by animateColorAsState(
-                        targetValue = if (isCollections) colors.textPrimary else colors.textMuted,
-                        label = "ColTabText"
+                    val allWallpapersInteractionSource = remember { MutableInteractionSource() }
+                    val isAllWallpapersPressed by allWallpapersInteractionSource.collectIsPressedAsState()
+                    val allWallpapersScale by animateFloatAsState(
+                        targetValue = if (isAllWallpapersPressed) 0.95f else 1.0f,
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
+                        label = "AllWallpapersTabScale"
                     )
+
+                    val collectionsInteractionSource = remember { MutableInteractionSource() }
+                    val isCollectionsPressed by collectionsInteractionSource.collectIsPressedAsState()
+                    val collectionsScale by animateFloatAsState(
+                        targetValue = if (isCollectionsPressed) 0.95f else 1.0f,
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
+                        label = "CollectionsTabScale"
+                    )
+
                     val allWallpapersTextColor by animateColorAsState(
-                        targetValue = if (!isCollections) colors.textPrimary else colors.textMuted,
+                        targetValue = if (isAllWallpapers) colors.textPrimary else colors.textMuted,
+                        animationSpec = ExpressiveMotion.FastEffectsColor,
                         label = "AllTabText"
+                    )
+                    val collectionsTextColor by animateColorAsState(
+                        targetValue = if (!isAllWallpapers) colors.textPrimary else colors.textMuted,
+                        animationSpec = ExpressiveMotion.FastEffectsColor,
+                        label = "ColTabText"
                     )
 
                     Row(
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Tab 1: Collections (Instant on-down response, clean - no lingering tap highlight)
+                        // Tab 0: All Wallpapers (Default on launch)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
+                                .graphicsLayer {
+                                    scaleX = allWallpapersScale
+                                    scaleY = allWallpapersScale
+                                }
                                 .clip(RoundedCornerShape(20.dp))
                                 .pointerInput(Unit) {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false)
-                                        onTabSelect(HomeNavigationTab.COLLECTIONS)
-                                        waitForUpOrCancellation()
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = collectionsTextColor,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Collections",
-                                    fontSize = 13.5.sp,
-                                    fontWeight = if (isCollections) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = collectionsTextColor
-                                )
-                            }
-                        }
-
-                        // Tab 2: All Wallpapers (Instant on-down response, clean - no lingering tap highlight)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(20.dp))
-                                .pointerInput(Unit) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val press = PressInteraction.Press(down.position)
+                                        allWallpapersInteractionSource.tryEmit(press)
                                         onTabSelect(HomeNavigationTab.ALL_WALLPAPERS)
-                                        waitForUpOrCancellation()
+                                        val up = waitForUpOrCancellation()
+                                        if (up != null) {
+                                            allWallpapersInteractionSource.tryEmit(PressInteraction.Release(press))
+                                        } else {
+                                            allWallpapersInteractionSource.tryEmit(PressInteraction.Cancel(press))
+                                        }
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -433,112 +513,177 @@ fun HomeScreen(
                                 Text(
                                     text = "All Wallpapers",
                                     fontSize = 13.5.sp,
-                                    fontWeight = if (!isCollections) FontWeight.SemiBold else FontWeight.Medium,
+                                    fontWeight = if (isAllWallpapers) FontWeight.SemiBold else FontWeight.Medium,
                                     color = allWallpapersTextColor
+                                )
+                            }
+                        }
+
+                        // Tab 1: Collections
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .graphicsLayer {
+                                    scaleX = collectionsScale
+                                    scaleY = collectionsScale
+                                }
+                                .clip(RoundedCornerShape(20.dp))
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val press = PressInteraction.Press(down.position)
+                                        collectionsInteractionSource.tryEmit(press)
+                                        onTabSelect(HomeNavigationTab.COLLECTIONS)
+                                        val up = waitForUpOrCancellation()
+                                        if (up != null) {
+                                            collectionsInteractionSource.tryEmit(PressInteraction.Release(press))
+                                        } else {
+                                            collectionsInteractionSource.tryEmit(PressInteraction.Cancel(press))
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = collectionsTextColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Collections",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (!isAllWallpapers) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = collectionsTextColor
                                 )
                             }
                         }
                     }
                 }
 
-                // 3. MAIN CONTENT AREA (Collections Grid vs All Wallpapers Grid)
-                val HomeTabTransitionDuration = 175
-
+                // 3. MAIN CONTENT AREA (All Wallpapers [0] <-> Collections [1])
                 AnimatedContent(
                     targetState = uiState.homeTab,
                     transitionSpec = {
                         if (targetState.ordinal > initialState.ordinal) {
-                            // Forward (Collections -> All Wallpapers): fast initial burst, outgoing page disappears fast
+                            // Forward (All Wallpapers [0] -> Collections [1]): moving right
                             (slideInHorizontally(
-                                animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                initialOffsetX = { fullWidth -> fullWidth }
-                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
+                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                initialOffsetX = { (it * 0.30f).toInt() }
+                            ) + scaleIn(
+                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                initialScale = 0.94f
+                            ) + fadeIn(
+                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                            )).togetherWith(
                                 slideOutHorizontally(
-                                    animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                    targetOffsetX = { fullWidth -> -fullWidth }
-                                ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
+                                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                    targetOffsetX = { -(it * 0.30f).toInt() }
+                                ) + scaleOut(
+                                    animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                    targetScale = 0.94f
+                                ) + fadeOut(
+                                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                )
                             )
                         } else if (targetState.ordinal < initialState.ordinal) {
-                            // Backward / Inverse (All Wallpapers -> Collections): fast initial burst, outgoing page disappears fast
+                            // Backward (Collections [1] -> All Wallpapers [0]): moving left
                             (slideInHorizontally(
-                                animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                initialOffsetX = { fullWidth -> -fullWidth }
-                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
+                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                initialOffsetX = { -(it * 0.30f).toInt() }
+                            ) + scaleIn(
+                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                initialScale = 0.94f
+                            ) + fadeIn(
+                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                            )).togetherWith(
                                 slideOutHorizontally(
-                                    animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                    targetOffsetX = { fullWidth -> fullWidth }
-                                ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
+                                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                    targetOffsetX = { (it * 0.30f).toInt() }
+                                ) + scaleOut(
+                                    animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                    targetScale = 0.94f
+                                ) + fadeOut(
+                                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                )
                             )
                         } else {
-                            fadeIn(animationSpec = tween(120)) togetherWith fadeOut(animationSpec = tween(90))
+                            fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) togetherWith
+                                    fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
                         }
                     },
                     label = "HomeContentTransition",
                     modifier = Modifier.fillMaxSize()
                 ) { currentTab ->
-                    if (currentTab == HomeNavigationTab.COLLECTIONS) {
-                        if (uiState.directories.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        Icons.Default.Folder,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(56.dp),
-                                        tint = colors.primaryAccent
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        "No collections detected",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = colors.textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        "Add folders under assets/wallpapers/",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = colors.textSecondary
-                                    )
+                    when (currentTab) {
+                        HomeNavigationTab.COLLECTIONS -> {
+                            if (uiState.directories.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Default.Folder,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(56.dp),
+                                            tint = colors.primaryAccent
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            "No collections detected",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = colors.textPrimary
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "Add folders under assets/wallpapers/",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = colors.textSecondary
+                                        )
+                                    }
                                 }
-                            }
-                        } else {
-                            LazyVerticalGrid(
-                                state = collectionsGridState,
-                                columns = GridCells.Fixed(2),
-                                contentPadding = PaddingValues(top = 14.dp, bottom = 96.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(uiState.directories, key = { it.id }) { directory ->
-                                    CollectionArtCard(
-                                        directory = directory,
-                                        colors = colors,
-                                        onClick = { onDirectorySelect(directory) }
-                                    )
+                            } else {
+                                LazyVerticalGrid(
+                                    state = collectionsGridState,
+                                    columns = GridCells.Fixed(2),
+                                    contentPadding = PaddingValues(top = 14.dp, bottom = bottomClearance),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(uiState.directories, key = { it.id }) { directory ->
+                                        CollectionArtCard(
+                                            directory = directory,
+                                            colors = colors,
+                                            onClick = { onDirectorySelect(directory) }
+                                        )
+                                    }
                                 }
                             }
                         }
-                    } else {
-                        val allItems = uiState.allLocalWallpapers
-                        if (allItems.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No wallpapers available.", color = colors.textSecondary)
-                            }
-                        } else {
-                            LazyVerticalGrid(
-                                state = allWallpapersGridState,
-                                columns = GridCells.Fixed(2),
-                                contentPadding = PaddingValues(top = 14.dp, bottom = 96.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(allItems, key = { it.id }) { item ->
-                                    CleanWallpaperCard(
-                                        item = item,
-                                        colors = colors,
-                                        onClick = { onWallpaperPreview(item) }
-                                    )
+                        HomeNavigationTab.ALL_WALLPAPERS -> {
+                            val allItems = uiState.allLocalWallpapers
+                            if (allItems.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No wallpapers available.", color = colors.textSecondary)
+                                }
+                            } else {
+                                LazyVerticalGrid(
+                                    state = allWallpapersGridState,
+                                    columns = GridCells.Fixed(2),
+                                    contentPadding = PaddingValues(top = 14.dp, bottom = bottomClearance),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(allItems, key = { it.id }) { item ->
+                                        CleanWallpaperCard(
+                                            item = item,
+                                            colors = colors,
+                                            onClick = { onWallpaperPreview(item) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -548,18 +693,39 @@ fun HomeScreen(
         }
 
         // =========================================================================
-        // FLOATING "SURPRISE ME" ACTION ICON
-        // Positioned at the midpoint of the bottom half on the right side
+        // STANDALONE DICE ACTION BUTTON (All Wallpapers only, scrolls away on down-scroll)
         // =========================================================================
         if (uiState.selectedDirectory == null) {
-            val fabBottomPadding = (maxHeight * 0.25f - 25.dp).coerceIn(120.dp, 240.dp)
-            FloatingSurpriseMeButton(
-                colors = colors,
-                onClick = { showDieDialog = true },
+            val fabBottomPadding = (maxHeight * 0.25f - 26.dp).coerceIn(120.dp, 240.dp)
+            AnimatedVisibility(
+                visible = uiState.homeTab == HomeNavigationTab.ALL_WALLPAPERS && !isScrollingDown,
+                enter = scaleIn(
+                    animationSpec = ExpressiveMotion.FastSpatialFloat,
+                    initialScale = 0.3f
+                ) + slideInVertically(
+                    animationSpec = ExpressiveMotion.FastSpatialIntOffset,
+                    initialOffsetY = { it / 2 }
+                ) + fadeIn(
+                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                ),
+                exit = scaleOut(
+                    animationSpec = ExpressiveMotion.FastSpatialFloat,
+                    targetScale = 0.3f
+                ) + slideOutVertically(
+                    animationSpec = ExpressiveMotion.FastSpatialIntOffset,
+                    targetOffsetY = { -it / 2 }
+                ) + fadeOut(
+                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                ),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 18.dp, bottom = fabBottomPadding)
-            )
+            ) {
+                StandaloneDiceButton(
+                    colors = colors,
+                    onClick = { showDieDialog = true }
+                )
+            }
         }
 
         // =========================================================================
@@ -579,84 +745,115 @@ fun HomeScreen(
 }
 
 @Composable
-fun FloatingSurpriseMeButton(
+fun StandaloneDiceButton(
     colors: AxWhavenColors,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.88f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "FloatingDieScale"
+    var cumulativeRotation by remember { mutableFloatStateOf(0f) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val rotation by animateFloatAsState(
+        targetValue = cumulativeRotation,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "DiceRotation"
     )
 
-    val backgroundBrush = if (colors.isGlassmorphism) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0x55FFFFFF),
-                Color(0x22141A2E)
-            )
-        )
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.82f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "DiceScale"
+    )
+
+    val cornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 22.dp else 14.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "DiceCorner"
+    )
+
+    val safeCornerRadius = cornerRadius.coerceAtLeast(0.dp)
+    val dieShape = RoundedCornerShape(safeCornerRadius)
+
+    val containerBg = if (colors.isGlassmorphism) {
+        Brush.verticalGradient(listOf(Color(0x55FFFFFF), Color(0x22141A2E)))
     } else {
         Brush.linearGradient(
-            colors = listOf(
-                colors.surfaceElevated,
-                Color(0xFF141726)
+            listOf(
+                MaterialTheme.colorScheme.primaryContainer,
+                colors.surfaceContainerHigh
             )
         )
     }
 
     val borderBrush = if (colors.isGlassmorphism) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0x99FFFFFF),
-                Color(0x35FFFFFF)
-            )
-        )
+        Brush.verticalGradient(listOf(Color(0x99FFFFFF), Color(0x35FFFFFF)))
     } else {
         Brush.linearGradient(
-            colors = listOf(
+            listOf(
                 colors.primaryAccent.copy(alpha = 0.65f),
-                colors.cardBorder
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
             )
         )
     }
 
+    val pipColor = if (colors.isGlassmorphism) {
+        colors.primaryAccent
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
     Box(
         modifier = modifier
-            .scale(scale)
-            .size(50.dp)
+            .size(52.dp)
+            .graphicsLayer {
+                rotationZ = rotation
+                scaleX = scale
+                scaleY = scale
+            }
             .shadow(
                 elevation = if (colors.isGlassmorphism) 14.dp else 10.dp,
-                shape = CircleShape,
-                spotColor = colors.primaryAccent.copy(alpha = 0.45f)
+                shape = dieShape,
+                spotColor = colors.primaryAccent.copy(alpha = 0.5f)
             )
-            .clip(CircleShape)
-            .background(backgroundBrush)
-            .border(1.2.dp, borderBrush, CircleShape)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    isPressed = true
-                    val up = waitForUpOrCancellation()
+            .clip(dieShape)
+            .background(containerBg)
+            .border(1.dp, borderBrush, dieShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                cumulativeRotation += 180f
+                isPressed = true
+                coroutineScope.launch {
+                    delay(120)
                     isPressed = false
-                    if (up != null) {
-                        onClick()
-                    }
+                }
+                val now = System.currentTimeMillis()
+                if (now - lastTapTime > 300L) {
+                    lastTapTime = now
+                    onClick()
                 }
             },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.Casino,
-            contentDescription = "Surprise Me (Roll Wallpaper)",
-            tint = colors.primaryAccent,
-            modifier = Modifier.size(24.dp)
-        )
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(11.dp)
+        ) {
+            val pipRadius = 3.4.dp.toPx()
+            val w = size.width
+            val h = size.height
+
+            // 5 pips: Center, Top-Left, Top-Right, Bottom-Left, Bottom-Right
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(w * 0.5f, h * 0.5f))
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(w * 0.22f, h * 0.22f))
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(w * 0.78f, h * 0.22f))
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(w * 0.22f, h * 0.78f))
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(w * 0.78f, h * 0.78f))
+        }
     }
 }
 
@@ -667,22 +864,44 @@ fun CollectionArtCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "ColCardScale"
+    )
+
+    val cardCornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 26.dp else 20.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "ColCardCorner"
+    )
+
+    val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
+
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (colors.isGlassmorphism) Color(0x24FFFFFF) else colors.surface
+            containerColor = if (colors.isGlassmorphism) Color(0x24FFFFFF) else colors.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(0.72f)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
             .border(
-                1.dp,
+                if (colors.isExpressive) 0.5.dp else 1.dp,
                 if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
+                else if (colors.isExpressive) Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.25f), colors.cardBorder.copy(alpha = 0.25f)))
                 else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                RoundedCornerShape(20.dp)
+                shape
             )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = ripple(bounded = true, color = colors.primaryAccent),
                 onClick = onClick
             )
@@ -774,22 +993,44 @@ fun CleanWallpaperCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "CardScale"
+    )
+
+    val cardCornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 24.dp else 18.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "CardCorner"
+    )
+
+    val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
+
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
-            containerColor = if (colors.isGlassmorphism) Color(0x20FFFFFF) else colors.surface
+            containerColor = if (colors.isGlassmorphism) Color(0x20FFFFFF) else colors.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(0.68f)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
             .border(
-                1.dp,
+                if (colors.isExpressive) 0.5.dp else 1.dp,
                 if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF)))
+                else if (colors.isExpressive) Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.25f), colors.cardBorder.copy(alpha = 0.25f)))
                 else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                RoundedCornerShape(18.dp)
+                shape
             )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = ripple(bounded = true, color = colors.primaryAccent),
                 onClick = onClick
             )

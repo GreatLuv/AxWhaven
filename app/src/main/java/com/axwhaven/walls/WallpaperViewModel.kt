@@ -19,17 +19,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class HomeNavigationTab {
-    COLLECTIONS,
-    ALL_WALLPAPERS
+    ALL_WALLPAPERS,
+    COLLECTIONS
 }
 
 data class WallpaperUiState(
     // Global Navigation & Theme
     val currentTab: PrimaryAppTab = PrimaryAppTab.HOME,
-    val currentTheme: AppThemeMode = AppThemeMode.AMOLED_BLACK,
+    val currentTheme: AppThemeMode = AppThemeMode.EXPRESSIVE,
 
     // Home Screen State
-    val homeTab: HomeNavigationTab = HomeNavigationTab.COLLECTIONS,
+    val homeTab: HomeNavigationTab = HomeNavigationTab.ALL_WALLPAPERS,
     val directories: List<ArtDirectory> = emptyList(),
     val selectedDirectory: ArtDirectory? = null,
 
@@ -95,15 +95,15 @@ class WallpaperViewModel(
     private var autocompleteJob: Job? = null
 
     init {
-        val savedThemeId = prefs.getString("theme_mode", AppThemeMode.AMOLED_BLACK.id)
-        val loadedTheme = AppThemeMode.values().find { it.id == savedThemeId } ?: AppThemeMode.AMOLED_BLACK
+        val savedThemeId = prefs.getString("theme_mode", AppThemeMode.EXPRESSIVE.id)
+        val loadedTheme = AppThemeMode.values().find { it.id == savedThemeId } ?: AppThemeMode.EXPRESSIVE
 
         val savedRatingToken = prefs.getString("content_rating", ContentRating.SFW.token)
         val loadedRating = ContentRating.values().find { it.token == savedRatingToken } ?: ContentRating.SFW
 
-        val savedHomeTabName = prefs.getString("home_tab", HomeNavigationTab.COLLECTIONS.name)
+        val savedHomeTabName = prefs.getString("home_tab", HomeNavigationTab.ALL_WALLPAPERS.name)
         val loadedHomeTab = runCatching { HomeNavigationTab.valueOf(savedHomeTabName ?: "") }
-            .getOrDefault(HomeNavigationTab.COLLECTIONS)
+            .getOrDefault(HomeNavigationTab.ALL_WALLPAPERS)
 
         val savedAppBg = loadSavedAppBackground()
         val savedBlurRadius = prefs.getFloat("key_bg_blur_radius", 25f)

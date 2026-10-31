@@ -1,9 +1,13 @@
 package com.axwhaven.walls.ui.screens
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -18,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -31,6 +37,7 @@ import com.axwhaven.walls.model.WallpaperSource
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AppThemeMode
 import com.axwhaven.walls.ui.theme.AxWhavenColors
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import kotlin.math.abs
 
 @Composable
@@ -50,6 +57,38 @@ fun SettingsScreen(
 ) {
     var showCustomPathDialog by remember { mutableStateOf(false) }
     var showUninstallDialog by remember { mutableStateOf(false) }
+
+    val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomClearance = 110.dp + navBottomInset
+
+    val outerCardShape = if (colors.isExpressive) RoundedCornerShape(28.dp) else RoundedCornerShape(22.dp)
+    val outerCardContainerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else if (colors.isExpressive) colors.surfaceContainerLow else colors.surface
+
+    fun Modifier.outerCardStyle(verticalPadding: Dp = 8.dp): Modifier = this
+        .fillMaxWidth()
+        .padding(vertical = verticalPadding)
+        .then(
+            if (colors.isGlassmorphism) {
+                Modifier.border(
+                    1.dp,
+                    Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF))),
+                    outerCardShape
+                )
+            } else if (colors.isExpressive) {
+                Modifier.border(
+                    0.5.dp,
+                    colors.outlineVariant.copy(alpha = 0.25f),
+                    outerCardShape
+                )
+            } else {
+                Modifier.border(
+                    1.dp,
+                    colors.cardBorder,
+                    outerCardShape
+                )
+            }
+        )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -62,7 +101,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 96.dp)
+            contentPadding = PaddingValues(top = 10.dp, bottom = bottomClearance)
         ) {
             // =========================================================================
             // SETTINGS HEADER
@@ -89,19 +128,11 @@ fun SettingsScreen(
             item {
                 SettingsSectionHeader(title = "Theme & Appearance", icon = Icons.Default.Palette, colors = colors)
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         AppThemeMode.values().forEach { mode ->
@@ -113,7 +144,9 @@ fun SettingsScreen(
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
                                         if (isSelected) {
-                                            if (colors.isGlassmorphism) Color(0x38FFFFFF) else colors.surfaceElevated
+                                            if (colors.isGlassmorphism) Color(0x38FFFFFF)
+                                            else if (colors.isExpressive) colors.surfaceContainerHigh
+                                            else colors.surfaceElevated
                                         } else Color.Transparent
                                     )
                                     .then(
@@ -188,19 +221,11 @@ fun SettingsScreen(
                     colors = colors
                 )
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -283,37 +308,13 @@ fun SettingsScreen(
                         ) {
                             presets.forEach { (presetVal, presetLabel) ->
                                 val isSelected = abs(uiState.backgroundBlurRadius - presetVal) < 2f
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(
-                                            if (isSelected) colors.primaryAccent
-                                            else if (colors.isGlassmorphism) Color(0x28FFFFFF)
-                                            else colors.surfaceElevated
-                                        )
-                                        .border(
-                                            1.dp,
-                                            if (isSelected) colors.primaryAccent
-                                            else if (colors.isGlassmorphism) Color(0x50FFFFFF)
-                                            else colors.cardBorder,
-                                            RoundedCornerShape(10.dp)
-                                        )
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = ripple(bounded = true, color = colors.primaryAccent)
-                                        ) { onBlurRadiusChange(presetVal) }
-                                        .padding(vertical = 7.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = presetLabel,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) colors.primaryAccentText else colors.textPrimary,
-                                        maxLines = 1
-                                    )
-                                }
+                                ExpressiveFilterChip(
+                                    selected = isSelected,
+                                    label = presetLabel,
+                                    colors = colors,
+                                    onClick = { onBlurRadiusChange(presetVal) },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }
@@ -327,19 +328,11 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 SettingsSectionHeader(title = "App Background Wallpaper", icon = Icons.Default.Wallpaper, colors = colors)
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         if (uiState.appBackgroundItem != null) {
@@ -385,28 +378,14 @@ fun SettingsScreen(
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            Button(
+                            ExpressiveActionButton(
                                 onClick = onClearAppBackground,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (colors.isGlassmorphism) Color(0x40EF4444) else Color(0x26EF4444),
-                                    contentColor = Color(0xFFFF6B6B)
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x66EF4444)),
+                                text = "Reset to Default Canvas",
+                                icon = Icons.Default.DeleteOutline,
+                                colors = colors,
+                                isDestructive = true,
                                 modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Reset to Default Canvas",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            )
                         } else {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -462,19 +441,11 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 SettingsSectionHeader(title = "Storage & Downloads", icon = Icons.Default.Folder, colors = colors)
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -538,49 +509,21 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedButton(
+                            ExpressiveActionButton(
                                 onClick = onSelectDownloadFolder,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = colors.primaryAccent
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (colors.isGlassmorphism) Color(0x60FFFFFF) else colors.cardBorder
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                text = "Select Folder",
+                                icon = Icons.Default.FolderOpen,
+                                colors = colors,
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FolderOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Select Folder", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            )
 
-                            OutlinedButton(
+                            ExpressiveActionButton(
                                 onClick = { showCustomPathDialog = true },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = colors.textPrimary
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (colors.isGlassmorphism) Color(0x60FFFFFF) else colors.cardBorder
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                text = "Enter Path",
+                                icon = Icons.Default.Edit,
+                                colors = colors,
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Enter Path", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            )
                         }
 
                         if (!uiState.isUsingDefaultStorage) {
@@ -618,19 +561,11 @@ fun SettingsScreen(
                 // Pre-Uninstall Wallpapers Backup & Safe Uninstall Card
                 Spacer(modifier = Modifier.height(10.dp))
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle(verticalPadding = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -678,74 +613,35 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Button(
+                            ExpressiveActionButton(
                                 onClick = onCopyWallpapersToPictures,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated,
-                                    contentColor = colors.primaryAccent
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (colors.isGlassmorphism) Color(0x60FFFFFF) else colors.cardBorder
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                text = "Copy to Pictures",
+                                icon = Icons.Default.SaveAlt,
+                                colors = colors,
+                                fontSize = 11.5.sp,
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SaveAlt,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy to Pictures", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            )
 
-                            Button(
+                            ExpressiveActionButton(
                                 onClick = onCopyWallpapersToSafFolder,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated,
-                                    contentColor = colors.textPrimary
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (colors.isGlassmorphism) Color(0x60FFFFFF) else colors.cardBorder
-                                ),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                text = "Choose Folder...",
+                                icon = Icons.Default.FolderOpen,
+                                colors = colors,
+                                fontSize = 11.5.sp,
                                 modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FolderOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Choose Folder...", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedButton(
+                        ExpressiveActionButton(
                             onClick = { showUninstallDialog = true },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFEF4444)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            text = "Uninstall AxWhaven...",
+                            icon = Icons.Default.DeleteForever,
+                            colors = colors,
+                            isDestructive = true,
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteForever,
-                                contentDescription = null,
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Uninstall AxWhaven...", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFEF4444))
-                        }
+                        )
                     }
                 }
             }
@@ -757,19 +653,11 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
                 SettingsSectionHeader(title = "About", icon = Icons.Default.Info, colors = colors)
                 Card(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = outerCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
+                        containerColor = outerCardContainerColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .border(
-                            1.dp,
-                            if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x22FFFFFF)))
-                            else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                            RoundedCornerShape(22.dp)
-                        )
+                    modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1045,6 +933,148 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ExpressiveFilterChip(
+    selected: Boolean,
+    label: String,
+    colors: AxWhavenColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cornerRadius by animateDpAsState(
+        targetValue = if (selected) 24.dp else 14.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "FilterChipCornerRadius"
+    )
+    val safeRadius = cornerRadius.coerceAtLeast(0.dp)
+    val shape = RoundedCornerShape(safeRadius)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "FilterChipScale"
+    )
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .background(
+                if (selected) colors.primaryAccent
+                else if (colors.isGlassmorphism) Color(0x28FFFFFF)
+                else if (colors.isExpressive) colors.surfaceContainerHigh
+                else colors.surfaceElevated
+            )
+            .border(
+                if (colors.isExpressive && !selected) 0.5.dp else 1.dp,
+                if (selected) colors.primaryAccent
+                else if (colors.isGlassmorphism) Color(0x50FFFFFF)
+                else if (colors.isExpressive) colors.outlineVariant.copy(alpha = 0.3f)
+                else colors.cardBorder,
+                shape
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true, color = colors.primaryAccent),
+                onClick = onClick
+            )
+            .padding(vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) colors.primaryAccentText else colors.textPrimary,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun ExpressiveActionButton(
+    onClick: () -> Unit,
+    text: String,
+    icon: ImageVector,
+    colors: AxWhavenColors,
+    modifier: Modifier = Modifier,
+    isDestructive: Boolean = false,
+    fontSize: androidx.compose.ui.unit.TextUnit = 12.sp
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val cornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 24.dp else 14.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "ActionButtonCornerRadius"
+    )
+    val safeRadius = cornerRadius.coerceAtLeast(0.dp)
+    val shape = RoundedCornerShape(safeRadius)
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "ActionButtonScale"
+    )
+
+    val contentColor = when {
+        isDestructive -> Color(0xFFEF4444)
+        colors.isExpressive -> colors.primaryAccent
+        else -> colors.primaryAccent
+    }
+
+    val containerColor = when {
+        isDestructive -> if (colors.isGlassmorphism) Color(0x40EF4444) else Color(0x26EF4444)
+        colors.isGlassmorphism -> Color(0x35FFFFFF)
+        colors.isExpressive -> colors.surfaceContainerHigh
+        else -> colors.surfaceElevated
+    }
+
+    val borderStroke = when {
+        isDestructive -> BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
+        colors.isGlassmorphism -> BorderStroke(1.dp, Color(0x60FFFFFF))
+        colors.isExpressive -> BorderStroke(0.5.dp, colors.outlineVariant.copy(alpha = 0.25f))
+        else -> BorderStroke(1.dp, colors.cardBorder)
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
+        shape = shape,
+        color = containerColor,
+        contentColor = contentColor,
+        border = borderStroke,
+        interactionSource = interactionSource
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = text,
+                fontSize = fontSize,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor
+            )
         }
     }
 }

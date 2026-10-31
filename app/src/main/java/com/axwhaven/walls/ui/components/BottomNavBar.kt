@@ -1,20 +1,16 @@
 package com.axwhaven.walls.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,25 +20,25 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import com.axwhaven.walls.model.PrimaryAppTab
 import com.axwhaven.walls.ui.theme.AxWhavenColors
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
 
 @Composable
 fun AxWhavenBottomNavBar(
@@ -98,16 +94,16 @@ fun AxWhavenBottomNavBar(
             val totalTabs = 3
             val tabWidth = maxWidth / totalTabs
             val activeTabIndex = currentTab.ordinal
-            val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
 
             val animatedTabIndex by animateFloatAsState(
                 targetValue = activeTabIndex.toFloat(),
-                animationSpec = tween(
-                    durationMillis = 170,
-                    easing = EmphasizedDecelerateEasing
-                ),
+                animationSpec = ExpressiveMotion.FastSpatialFloat,
                 label = "NavSlidingPillOffset"
             )
+
+            // Liquid stretch derived from motion progress towards active tab (peaks ~1.08f mid-flight)
+            val motionDelta = abs(activeTabIndex.toFloat() - animatedTabIndex)
+            val liquidStretchX = (1.0f + (motionDelta * 0.12f).coerceIn(0f, 0.08f))
 
             val activePillColor = if (colors.isGlassmorphism) {
                 colors.primaryAccent.copy(alpha = 0.22f)
@@ -115,7 +111,7 @@ fun AxWhavenBottomNavBar(
                 colors.primaryAccent.copy(alpha = 0.14f)
             }
 
-            // Smooth horizontal sliding indicator pill across the 3 bottom tabs
+            // Smooth horizontal sliding indicator pill across the 3 bottom tabs with liquid stretch
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -125,6 +121,9 @@ fun AxWhavenBottomNavBar(
                             x = (animatedTabIndex * tabWidth.toPx()).roundToInt(),
                             y = 0
                         )
+                    }
+                    .graphicsLayer {
+                        scaleX = liquidStretchX
                     }
                     .padding(horizontal = 4.dp)
                     .clip(RoundedCornerShape(26.dp))
@@ -195,35 +194,60 @@ fun NavBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+    var isPressed by remember { mutableStateOf(false) }
+
+    val itemPressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "NavItemPressScale"
+    )
+
+    val iconOffsetY by animateDpAsState(
+        targetValue = if (isSelected) (-2).dp else 0.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "NavIconOffsetY"
+    )
+
+    val iconPopAnimatable = remember { Animatable(1.0f) }
+    LaunchedEffect(isSelected) {
+        if (isSelected) {
+            iconPopAnimatable.snapTo(1.15f)
+            iconPopAnimatable.animateTo(
+                targetValue = 1.0f,
+                animationSpec = ExpressiveMotion.FastSpatialFloat
+            )
+        } else {
+            iconPopAnimatable.snapTo(1.0f)
+        }
+    }
 
     val animatedIconColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
+        animationSpec = ExpressiveMotion.FastEffectsColor,
         label = "NavIconColor"
     )
 
     val animatedTextColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
+        animationSpec = ExpressiveMotion.FastEffectsColor,
         label = "NavTextColor"
-    )
-
-    val iconScale by animateFloatAsState(
-        targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
-        label = "NavIconScale"
     )
 
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .graphicsLayer {
+                scaleX = itemPressScale
+                scaleY = itemPressScale
+            }
             .clip(RoundedCornerShape(26.dp))
             .pointerInput(tab) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
                     onClick()
                     waitForUpOrCancellation()
+                    isPressed = false
                 }
             }
             .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -239,7 +263,11 @@ fun NavBarItem(
                 tint = animatedIconColor,
                 modifier = Modifier
                     .size(21.dp)
-                    .scale(iconScale)
+                    .offset(y = iconOffsetY)
+                    .graphicsLayer {
+                        scaleX = iconPopAnimatable.value
+                        scaleY = iconPopAnimatable.value
+                    }
             )
             Spacer(modifier = Modifier.height(3.dp))
             Text(

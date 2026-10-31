@@ -4,7 +4,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 val LocalAxWhavenColors = staticCompositionLocalOf<AxWhavenColors> {
-    getThemeColors(AppThemeMode.AMOLED_BLACK)
+    getThemeColors(AppThemeMode.EXPRESSIVE)
 }
 
 enum class AppThemeMode(
@@ -13,6 +13,12 @@ enum class AppThemeMode(
     val desc: String,
     val previewColors: List<Color>
 ) {
+    EXPRESSIVE(
+        "expressive",
+        "Material 3 Expressive",
+        "Dynamic Pixel-style expressive tonal surfaces with electric lavender and spring motion",
+        listOf(Color(0xFF141218), Color(0xFF2B2930), Color(0xFFD0BCFF))
+    ),
     AMOLED_BLACK(
         "amoled",
         "AMOLED Black",
@@ -55,11 +61,50 @@ data class AxWhavenColors(
     val shimmerHighlight: Color = cardBorder,
     val dockSurface: Color = surfaceElevated,
     val dockBorder: Color = cardBorder,
-    val isGlassmorphism: Boolean = false
+    val isGlassmorphism: Boolean = false,
+    val isExpressive: Boolean = false,
+    val surfaceContainerLowest: Color = surface,
+    val surfaceContainerLow: Color = surface,
+    val surfaceContainer: Color = surface,
+    val surfaceContainerHigh: Color = surfaceElevated,
+    val surfaceContainerHighest: Color = surfaceElevated,
+    val outlineVariant: Color = cardBorder
 )
 
 fun getThemeColors(themeMode: AppThemeMode): AxWhavenColors {
     return when (themeMode) {
+        AppThemeMode.EXPRESSIVE -> AxWhavenColors(
+            isLight = false,
+            background = Color(0xFF141218),
+            surface = Color(0xFF141218),
+            surfaceElevated = Color(0xFF2B2930),
+            cardBorder = Color(0xFF49454F),
+            textPrimary = Color(0xFFE6E0E9),
+            textSecondary = Color(0xFFCAC4D0),
+            textMuted = Color(0xFF938F99),
+            primaryAccent = Color(0xFFD0BCFF),
+            primaryAccentText = Color(0xFF381E72),
+            secondaryAccent = Color(0xFF4ED8E8),
+            mintText = Color(0xFF4EEDB4),
+            mintPillBg = Color(0xFF1D2F28),
+            mintPillBorder = Color(0xFF2E4D40),
+            surpriseGradientStart = Color(0xFF2F2445),
+            surpriseGradientEnd = Color(0xFF1D1B20),
+            surpriseGradientStroke = Color(0xFF49454F),
+            surpriseIconBg = Color(0xFF4F378B),
+            bottomNavBg = Color(0xF21D1B20),
+            bottomNavBorder = Color(0xFF49454F),
+            glassFill = Color(0x33FFFFFF),
+            glassBorder = Color(0x4DFFFFFF),
+            scrimEnd = Color(0xE6141218),
+            isExpressive = true,
+            surfaceContainerLowest = Color(0xFF0F0D13),
+            surfaceContainerLow = Color(0xFF1D1B20),
+            surfaceContainer = Color(0xFF211F26),
+            surfaceContainerHigh = Color(0xFF2B2930),
+            surfaceContainerHighest = Color(0xFF36343B),
+            outlineVariant = Color(0xFF49454F)
+        )
         AppThemeMode.AMOLED_BLACK -> AxWhavenColors(
             isLight = false,
             background = Color(0xFF000000),

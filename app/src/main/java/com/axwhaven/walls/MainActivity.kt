@@ -17,6 +17,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -49,6 +51,7 @@ import com.axwhaven.walls.ui.screens.HomeScreen
 import com.axwhaven.walls.ui.screens.SettingsScreen
 import com.axwhaven.walls.ui.screens.WallpaperPreviewScreen
 import com.axwhaven.walls.ui.theme.AxWhavenDynamicTheme
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
 
 class MainActivity : ComponentActivity() {
 
@@ -292,36 +295,54 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            val TabTransitionDuration = 175
-                            val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
-
                             AnimatedContent(
                                 targetState = uiState.currentTab,
                                 transitionSpec = {
                                     if (targetState.ordinal > initialState.ordinal) {
-                                        // Forward (Home -> AxW Surf -> Settings): fast initial burst, outgoing page disappears fast
+                                        // Moving right (target > initial)
                                         (slideInHorizontally(
-                                            animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                            initialOffsetX = { fullWidth -> fullWidth }
-                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
+                                            animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                            initialOffsetX = { (it * 0.30f).toInt() }
+                                        ) + scaleIn(
+                                            animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                            initialScale = 0.94f
+                                        ) + fadeIn(
+                                            animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                        )).togetherWith(
                                             slideOutHorizontally(
-                                                animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                                targetOffsetX = { fullWidth -> -fullWidth }
-                                            ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
+                                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                                targetOffsetX = { -(it * 0.30f).toInt() }
+                                            ) + scaleOut(
+                                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                                targetScale = 0.94f
+                                            ) + fadeOut(
+                                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                            )
                                         )
                                     } else if (targetState.ordinal < initialState.ordinal) {
-                                        // Inverse / Backward (Settings -> AxW Surf -> Home): fast initial burst, outgoing page disappears fast
+                                        // Moving left (target < initial)
                                         (slideInHorizontally(
-                                            animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                            initialOffsetX = { fullWidth -> -fullWidth }
-                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
+                                            animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                            initialOffsetX = { -(it * 0.30f).toInt() }
+                                        ) + scaleIn(
+                                            animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                            initialScale = 0.94f
+                                        ) + fadeIn(
+                                            animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                        )).togetherWith(
                                             slideOutHorizontally(
-                                                animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
-                                                targetOffsetX = { fullWidth -> fullWidth }
-                                            ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
+                                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                                                targetOffsetX = { (it * 0.30f).toInt() }
+                                            ) + scaleOut(
+                                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
+                                                targetScale = 0.94f
+                                            ) + fadeOut(
+                                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                                            )
                                         )
                                     } else {
-                                        fadeIn(animationSpec = tween(120)) togetherWith fadeOut(animationSpec = tween(90))
+                                        fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) togetherWith
+                                                fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
                                     }
                                 },
                                 label = "PrimaryTabTransition"
