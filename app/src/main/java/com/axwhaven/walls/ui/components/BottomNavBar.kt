@@ -1,13 +1,20 @@
 package com.axwhaven.walls.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,6 +35,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -90,12 +98,13 @@ fun AxWhavenBottomNavBar(
             val totalTabs = 3
             val tabWidth = maxWidth / totalTabs
             val activeTabIndex = currentTab.ordinal
+            val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
 
             val animatedTabIndex by animateFloatAsState(
                 targetValue = activeTabIndex.toFloat(),
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow
+                animationSpec = tween(
+                    durationMillis = 200,
+                    easing = EmphasizedDecelerateEasing
                 ),
                 label = "NavSlidingPillOffset"
             )
@@ -186,33 +195,47 @@ fun NavBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+
     val animatedIconColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
         label = "NavIconColor"
     )
 
     val animatedTextColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
         label = "NavTextColor"
     )
 
     val iconScale by animateFloatAsState(
         targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
         label = "NavIconScale"
     )
+
+    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(26.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true, color = colors.primaryAccent),
-                onClick = onClick
-            )
+            .indication(interactionSource, ripple(bounded = true, color = colors.primaryAccent))
+            .pointerInput(tab) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    onClick()
+                    val press = PressInteraction.Press(down.position)
+                    interactionSource.tryEmit(press)
+                    val up = waitForUpOrCancellation()
+                    if (up != null) {
+                        interactionSource.tryEmit(PressInteraction.Release(press))
+                    } else {
+                        interactionSource.tryEmit(PressInteraction.Cancel(press))
+                    }
+                }
+            }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {

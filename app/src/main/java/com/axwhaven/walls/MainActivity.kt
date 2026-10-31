@@ -11,7 +11,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -290,33 +292,36 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier.fillMaxSize()
                         ) {
+                            val TabTransitionDuration = 200
+                            val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+
                             AnimatedContent(
                                 targetState = uiState.currentTab,
                                 transitionSpec = {
                                     if (targetState.ordinal > initialState.ordinal) {
-                                        // Forward (Home -> AxW Surf -> Settings): slide in from right, slide out to left
+                                        // Forward (Home -> AxW Surf -> Settings): fast initial burst, decelerating smoothly
                                         (slideInHorizontally(
-                                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                            animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                             initialOffsetX = { fullWidth -> fullWidth }
-                                        ) + fadeIn(animationSpec = tween(280))).togetherWith(
+                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
                                             slideOutHorizontally(
-                                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                                 targetOffsetX = { fullWidth -> -fullWidth }
-                                            ) + fadeOut(animationSpec = tween(220))
+                                            ) + fadeOut(animationSpec = tween(TabTransitionDuration - 60, easing = LinearEasing))
                                         )
                                     } else if (targetState.ordinal < initialState.ordinal) {
-                                        // Inverse / Backward (Settings -> AxW Surf -> Home): slide in from left, slide out to right
+                                        // Inverse / Backward (Settings -> AxW Surf -> Home): fast initial burst, decelerating smoothly
                                         (slideInHorizontally(
-                                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                            animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                             initialOffsetX = { fullWidth -> -fullWidth }
-                                        ) + fadeIn(animationSpec = tween(280))).togetherWith(
+                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
                                             slideOutHorizontally(
-                                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                                 targetOffsetX = { fullWidth -> fullWidth }
-                                            ) + fadeOut(animationSpec = tween(220))
+                                            ) + fadeOut(animationSpec = tween(TabTransitionDuration - 60, easing = LinearEasing))
                                         )
                                     } else {
-                                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                                        fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
                                     }
                                 },
                                 label = "PrimaryTabTransition"

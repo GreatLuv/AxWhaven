@@ -3,7 +3,9 @@ package com.axwhaven.walls.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -18,7 +20,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -49,6 +56,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -330,6 +338,10 @@ fun HomeScreen(
 
                 // 2. SEGMENTED NAVIGATION TOGGLE ("Collections" | "All Wallpapers")
                 val isCollections = uiState.homeTab == HomeNavigationTab.COLLECTIONS
+                val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+                val colInteraction = remember { MutableInteractionSource() }
+                val allInteraction = remember { MutableInteractionSource() }
+
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -359,9 +371,9 @@ fun HomeScreen(
                     val targetTabOffset = if (isCollections) 0f else 1f
                     val animatedTabOffset by animateFloatAsState(
                         targetValue = targetTabOffset,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioLowBouncy,
-                            stiffness = Spring.StiffnessMediumLow
+                        animationSpec = tween(
+                            durationMillis = 200,
+                            easing = EmphasizedDecelerateEasing
                         ),
                         label = "SegmentedPillOffset"
                     )
@@ -401,16 +413,27 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Tab 1: Collections
+                        // Tab 1: Collections (Instant on-down response)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(20.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true, color = colors.primaryAccent)
-                                ) { onTabSelect(HomeNavigationTab.COLLECTIONS) },
+                                .indication(colInteraction, ripple(bounded = true, color = colors.primaryAccent))
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        onTabSelect(HomeNavigationTab.COLLECTIONS)
+                                        val press = PressInteraction.Press(down.position)
+                                        colInteraction.tryEmit(press)
+                                        val up = waitForUpOrCancellation()
+                                        if (up != null) {
+                                            colInteraction.tryEmit(PressInteraction.Release(press))
+                                        } else {
+                                            colInteraction.tryEmit(PressInteraction.Cancel(press))
+                                        }
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -430,16 +453,27 @@ fun HomeScreen(
                             }
                         }
 
-                        // Tab 2: All Wallpapers
+                        // Tab 2: All Wallpapers (Instant on-down response)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(20.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true, color = colors.primaryAccent)
-                                ) { onTabSelect(HomeNavigationTab.ALL_WALLPAPERS) },
+                                .indication(allInteraction, ripple(bounded = true, color = colors.primaryAccent))
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        onTabSelect(HomeNavigationTab.ALL_WALLPAPERS)
+                                        val press = PressInteraction.Press(down.position)
+                                        allInteraction.tryEmit(press)
+                                        val up = waitForUpOrCancellation()
+                                        if (up != null) {
+                                            allInteraction.tryEmit(PressInteraction.Release(press))
+                                        } else {
+                                            allInteraction.tryEmit(PressInteraction.Cancel(press))
+                                        }
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -565,33 +599,35 @@ fun HomeScreen(
                     }
 
                 // 4. MAIN CONTENT AREA (Collections Grid vs All Wallpapers Grid)
+                val HomeTabTransitionDuration = 200
+
                 AnimatedContent(
                     targetState = uiState.homeTab,
                     transitionSpec = {
                         if (targetState.ordinal > initialState.ordinal) {
-                            // Forward (Collections -> All Wallpapers): slide in from right, slide out to left
+                            // Forward (Collections -> All Wallpapers): fast initial burst, decelerating smoothly
                             (slideInHorizontally(
-                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                 initialOffsetX = { fullWidth -> fullWidth }
-                            ) + fadeIn(animationSpec = tween(260))).togetherWith(
+                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
                                 slideOutHorizontally(
-                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                    animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                     targetOffsetX = { fullWidth -> -fullWidth }
-                                ) + fadeOut(animationSpec = tween(220))
+                                ) + fadeOut(animationSpec = tween(HomeTabTransitionDuration - 60, easing = LinearEasing))
                             )
                         } else if (targetState.ordinal < initialState.ordinal) {
-                            // Backward / Inverse (All Wallpapers -> Collections): slide in from left, slide out to right
+                            // Backward / Inverse (All Wallpapers -> Collections): fast initial burst, decelerating smoothly
                             (slideInHorizontally(
-                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                 initialOffsetX = { fullWidth -> -fullWidth }
-                            ) + fadeIn(animationSpec = tween(260))).togetherWith(
+                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
                                 slideOutHorizontally(
-                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                    animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                     targetOffsetX = { fullWidth -> fullWidth }
-                                ) + fadeOut(animationSpec = tween(220))
+                                ) + fadeOut(animationSpec = tween(HomeTabTransitionDuration - 60, easing = LinearEasing))
                             )
                         } else {
-                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                            fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
                         }
                     },
                     label = "HomeContentTransition",
