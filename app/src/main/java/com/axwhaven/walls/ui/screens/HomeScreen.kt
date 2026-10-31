@@ -48,6 +48,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -87,47 +88,11 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     var showDieDialog by remember { mutableStateOf(false) }
-    var isDiceRollVisible by remember { mutableStateOf(true) }
 
     val collectionsGridState = rememberLazyGridState()
     val allWallpapersGridState = rememberLazyGridState()
 
-    val isCollections = uiState.homeTab == HomeNavigationTab.COLLECTIONS
-
-    val nestedScrollConnection = remember(isCollections) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // When scrolling down, hide the banner once scrolled past the top
-                if (available.y < -12f) {
-                    val activeState = if (isCollections) collectionsGridState else allWallpapersGridState
-                    if (activeState.firstVisibleItemIndex > 0 || activeState.firstVisibleItemScrollOffset > 8) {
-                        if (isDiceRollVisible) {
-                            isDiceRollVisible = false
-                        }
-                    }
-                }
-                // Do NOT show banner when scrolling up mid-list.
-                // The banner must ONLY reappear after reaching the full top.
-                return Offset.Zero
-            }
-        }
-    }
-
-    // Monitor scroll position: Only reveal the banner when reaching the full top (index 0, offset <= 4)
-    LaunchedEffect(isCollections) {
-        val activeState = if (isCollections) collectionsGridState else allWallpapersGridState
-        snapshotFlow {
-            Pair(activeState.firstVisibleItemIndex, activeState.firstVisibleItemScrollOffset)
-        }.collect { (index, offset) ->
-            if (index == 0 && offset <= 4) {
-                isDiceRollVisible = true
-            } else if (index > 0 || offset > 20) {
-                isDiceRollVisible = false
-            }
-        }
-    }
-
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(
@@ -259,7 +224,6 @@ fun HomeScreen(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp)
-                    .nestedScroll(nestedScrollConnection)
             ) {
                 // 1. TOP APP HEADER BAR
                 Row(
@@ -477,110 +441,7 @@ fun HomeScreen(
                     }
                 }
 
-                // 3. "SURPRISE ME" RANDOMIZER BANNER CARD (Auto-hides on scroll down, reappears on scroll up)
-                AnimatedVisibility(
-                    visible = isDiceRollVisible,
-                    enter = fadeIn(animationSpec = tween(220)) + expandVertically(animationSpec = tween(250)),
-                    exit = fadeOut(animationSpec = tween(180)) + shrinkVertically(animationSpec = tween(220))
-                ) {
-                    Card(
-                        shape = RoundedCornerShape(22.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 14.dp)
-                            .clip(RoundedCornerShape(22.dp))
-                            .border(1.dp, colors.surpriseGradientStroke, RoundedCornerShape(22.dp))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true, color = colors.primaryAccent)
-                            ) { showDieDialog = true }
-                    ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(colors.surpriseGradientStart, colors.surpriseGradientEnd)
-                                )
-                            )
-                            .padding(14.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            // Left Icon Container: 48dp x 48dp rounded square with dice
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(colors.surpriseIconBg)
-                                    .border(1.dp, colors.primaryAccent.copy(alpha = 0.25f), RoundedCornerShape(14.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Casino,
-                                    contentDescription = null,
-                                    tint = colors.primaryAccent,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-
-                            // Center Text Stack
-                            Column(
-                                modifier = Modifier
-                                    .padding(start = 14.dp)
-                                    .weight(1f)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Surprise Me",
-                                        fontSize = 15.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = colors.textPrimary
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "✦",
-                                        color = colors.primaryAccent,
-                                        fontSize = 13.sp
-                                    )
-                                }
-                                Text(
-                                    text = "Roll a random unseen anime wallpaper",
-                                    fontSize = 12.sp,
-                                    color = colors.textSecondary,
-                                    modifier = Modifier.padding(top = 2.dp)
-                                )
-                            }
-
-                            // Right Action Button
-                                    Button(
-                                        onClick = { showDieDialog = true },
-                                        shape = RoundedCornerShape(20.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = colors.primaryAccent,
-                                            contentColor = colors.primaryAccentText
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
-                                        modifier = Modifier
-                                            .height(38.dp)
-                                            .defaultMinSize(minWidth = 70.dp)
-                                    ) {
-                                        Text(
-                                            text = "Roll",
-                                            fontSize = 13.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = colors.primaryAccentText
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                // 4. MAIN CONTENT AREA (Collections Grid vs All Wallpapers Grid)
+                // 3. MAIN CONTENT AREA (Collections Grid vs All Wallpapers Grid)
                 val HomeTabTransitionDuration = 175
 
                 AnimatedContent(
@@ -687,6 +548,21 @@ fun HomeScreen(
         }
 
         // =========================================================================
+        // FLOATING "SURPRISE ME" ACTION ICON
+        // Positioned at the midpoint of the bottom half on the right side
+        // =========================================================================
+        if (uiState.selectedDirectory == null) {
+            val fabBottomPadding = (maxHeight * 0.25f - 25.dp).coerceIn(120.dp, 240.dp)
+            FloatingSurpriseMeButton(
+                colors = colors,
+                onClick = { showDieDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 18.dp, bottom = fabBottomPadding)
+            )
+        }
+
+        // =========================================================================
         // REFINED RANDOM DIE TARGET PROMPT DIALOG
         // =========================================================================
         if (showDieDialog) {
@@ -699,6 +575,88 @@ fun HomeScreen(
                 }
             )
         }
+    }
+}
+
+@Composable
+fun FloatingSurpriseMeButton(
+    colors: AxWhavenColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "FloatingDieScale"
+    )
+
+    val backgroundBrush = if (colors.isGlassmorphism) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0x55FFFFFF),
+                Color(0x22141A2E)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                colors.surfaceElevated,
+                Color(0xFF141726)
+            )
+        )
+    }
+
+    val borderBrush = if (colors.isGlassmorphism) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0x99FFFFFF),
+                Color(0x35FFFFFF)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                colors.primaryAccent.copy(alpha = 0.65f),
+                colors.cardBorder
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .scale(scale)
+            .size(50.dp)
+            .shadow(
+                elevation = if (colors.isGlassmorphism) 14.dp else 10.dp,
+                shape = CircleShape,
+                spotColor = colors.primaryAccent.copy(alpha = 0.45f)
+            )
+            .clip(CircleShape)
+            .background(backgroundBrush)
+            .border(1.2.dp, borderBrush, CircleShape)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    val up = waitForUpOrCancellation()
+                    isPressed = false
+                    if (up != null) {
+                        onClick()
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Casino,
+            contentDescription = "Surprise Me (Roll Wallpaper)",
+            tint = colors.primaryAccent,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
