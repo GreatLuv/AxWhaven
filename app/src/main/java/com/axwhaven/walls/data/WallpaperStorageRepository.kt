@@ -25,6 +25,81 @@ class WallpaperStorageRepository(private val context: Context) {
     companion object {
         private const val KEY_CUSTOM_PATH = "custom_download_path"
         private const val KEY_SAF_URI = "saf_tree_uri"
+
+        @Volatile
+        private var memoryCachedAssetDirectories: List<ArtDirectory>? = null
+
+        // Precompiled static manifest of bundled assets for instant 0ms Frame-0 rendering
+        private val BUNDLED_STATIC_CATALOG: Map<String, List<String>> = mapOf(
+            "Alya" to listOf(
+                "alya_00.jpg"
+            ),
+            "Asuka" to listOf(
+                "asuka_00.jpg",
+                "asuka_01.png",
+                "asuka_02.png",
+                "asuka_03.jpg",
+                "asuka_04.png",
+                "3a63de13d45c75adf47ad1e821c225fc.jpg",
+                "9287623723dfcae3ec1df2be201f7b1c.jpg",
+                "bd78228b0db7c601ab5664254161d4eb.jpg"
+            ),
+            "Kurumi" to listOf(
+                "kurumi_00.png",
+                "kurumi_01.png",
+                "kurumi_02.png",
+                "kurumi_03.png",
+                "kurumi_04.png",
+                "kurumi_05.png"
+            ),
+            "Lumine" to listOf(
+                "lumine_00.jpg",
+                "lumine_01.png"
+            ),
+            "Miku" to listOf(
+                "IMG_20261014_000422_615.jpg",
+                "IMG_20261014_000429_700.jpg",
+                "IMG_20261014_000442_798.jpg",
+                "IMG_20261014_000455_982.jpg",
+                "IMG_20261014_000501_756.jpg",
+                "IMG_20261014_000507_624.jpg",
+                "IMG_20261014_000517_385.jpg",
+                "IMG_20261014_000522_406.jpg"
+            ),
+            "Random" to listOf(
+                "752c7e8bca460b8965cf28f9d123625c.jpg",
+                "a6281ef13ca1992f94e8d6d5dc8dcf2b.jpg",
+                "baf8bef2258d5f1ed0cb60e4e07f6e8d.jpg",
+                "random_00.png",
+                "random_01.jpg"
+            ),
+            "Saber" to listOf(
+                "24faaf1223b95c74bb8c7bc0a09919c6.jpg",
+                "saber_00.jpg",
+                "saber_01.png",
+                "saber_02.jpg"
+            )
+        )
+
+        private fun buildBundledDirectories(): List<ArtDirectory> {
+            return BUNDLED_STATIC_CATALOG.map { (folderKey, files) ->
+                val displayName = folderKey.replace('_', ' ').replaceFirstChar { it.uppercase() }
+                val items = files.mapIndexed { idx, fileName ->
+                    WallpaperItem(
+                        id = "asset_${folderKey}_$idx",
+                        title = fileName.substringBeforeLast('.'),
+                        directoryName = displayName,
+                        source = WallpaperSource.AssetPath("wallpapers/$folderKey/$fileName")
+                    )
+                }
+                ArtDirectory(
+                    id = folderKey,
+                    artName = displayName,
+                    items = items,
+                    isDownloadedFolder = false
+                )
+            }
+        }
     }
 
     /**
@@ -188,17 +263,27 @@ class WallpaperStorageRepository(private val context: Context) {
     }
 
     /**
-     * Loads all local collections:
-     * 1. Dynamic asset folders
-     * 2. The active "AxW Surf" folder (only if it contains at least 1 image)
+     * Instantly returns initial asset directories without waiting for IO.
+     * Guarantees 0ms Frame-0 rendering of all collections on fresh app start.
      */
-    suspend fun loadAllDirectories(): List<ArtDirectory> = withContext(Dispatchers.IO) {
+    fun getInitialDirectories(): List<ArtDirectory> {
+        val cached = memoryCachedAssetDirectories
+        if (cached != null) return cached
+        val initial = buildBundledDirectories()
+        memoryCachedAssetDirectories = initial
+        return initial
+    }
+
+    private fun scanAssetDirectories(): List<ArtDirectory> {
         val directories = mutableListOf<ArtDirectory>()
         val assetManager = context.assets
 
-        // 1. Scan assets/wallpapers/ subdirectories dynamically (Character collections)
         val allAssetFolders = runCatching { assetManager.list("wallpapers")?.toList().orEmpty() }
             .getOrDefault(emptyList())
+
+        if (allAssetFolders.isEmpty()) {
+            return buildBundledDirectories()
+        }
 
         for (folderKey in allAssetFolders) {
             val assetSubPath = "wallpapers/$folderKey"
@@ -226,6 +311,24 @@ class WallpaperStorageRepository(private val context: Context) {
                 )
             }
         }
+        return if (directories.isNotEmpty()) directories else buildBundledDirectories()
+    }
+
+    /**
+     * Loads all local collections:
+     * 1. Reuses cached static asset folders (or loads them once)
+     * 2. The active "AxW Surf" folder (only if it contains at least 1 image)
+     */
+    suspend fun loadAllDirectories(): List<ArtDirectory> = withContext(Dispatchers.IO) {
+        val directories = mutableListOf<ArtDirectory>()
+
+        // 1. In-memory cached static asset directories
+        var assetDirs = memoryCachedAssetDirectories
+        if (assetDirs == null) {
+            assetDirs = scanAssetDirectories()
+            memoryCachedAssetDirectories = assetDirs
+        }
+        directories.addAll(assetDirs)
 
         // 2. Only show "AxW Surf" directory when it has at least 1 image!
         val downloadedItems = loadDownloadedWallpapers()

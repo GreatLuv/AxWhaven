@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.axwhaven.walls.model.ProviderSite
 import com.axwhaven.walls.model.WallpaperSource
@@ -72,8 +73,10 @@ fun WallpaperImage(
 
     val request = ImageRequest.Builder(context)
         .data(model)
-        .crossfade(350)
+        .crossfade(if (source is WallpaperSource.RemoteUrl) 220 else 0)
         .allowHardware(true)
+        .memoryCachePolicy(CachePolicy.ENABLED)
+        .diskCachePolicy(CachePolicy.ENABLED)
         .apply {
             if (source is WallpaperSource.RemoteUrl) {
                 val referer = source.referer ?: when (source.site) {

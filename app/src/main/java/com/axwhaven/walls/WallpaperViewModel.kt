@@ -81,7 +81,14 @@ class WallpaperViewModel(
 
     private val prefs = context.getSharedPreferences("axwhaven_settings", Context.MODE_PRIVATE)
 
-    private val _uiState = MutableStateFlow(WallpaperUiState())
+    private val _uiState = MutableStateFlow(
+        WallpaperUiState(
+            directories = storageRepo.getInitialDirectories(),
+            activeStorageDesc = storageRepo.getActiveLocationDescription(),
+            isUsingDefaultStorage = storageRepo.isUsingDefaultLocation(),
+            defaultStorageWallpapersCount = storageRepo.getDefaultWallpapersCount()
+        )
+    )
     val uiState: StateFlow<WallpaperUiState> = _uiState.asStateFlow()
 
     private var searchDebounceJob: Job? = null
@@ -94,6 +101,10 @@ class WallpaperViewModel(
         val savedRatingToken = prefs.getString("content_rating", ContentRating.SFW.token)
         val loadedRating = ContentRating.values().find { it.token == savedRatingToken } ?: ContentRating.SFW
 
+        val savedHomeTabName = prefs.getString("home_tab", HomeNavigationTab.COLLECTIONS.name)
+        val loadedHomeTab = runCatching { HomeNavigationTab.valueOf(savedHomeTabName ?: "") }
+            .getOrDefault(HomeNavigationTab.COLLECTIONS)
+
         val savedAppBg = loadSavedAppBackground()
         val savedBlurRadius = prefs.getFloat("key_bg_blur_radius", 25f)
         val savedKonachanCookie = prefs.getString("konachan_cookie", "") ?: ""
@@ -101,6 +112,7 @@ class WallpaperViewModel(
 
         _uiState.value = _uiState.value.copy(
             currentTheme = loadedTheme,
+            homeTab = loadedHomeTab,
             filterState = _uiState.value.filterState.copy(rating = loadedRating),
             appBackgroundItem = savedAppBg,
             backgroundBlurRadius = savedBlurRadius,
@@ -109,7 +121,6 @@ class WallpaperViewModel(
         )
 
         refreshLocalDirectories()
-        executeHavenSurfSearch(isNewSearch = true)
     }
 
     fun selectTheme(theme: AppThemeMode) {
@@ -127,10 +138,15 @@ class WallpaperViewModel(
         _uiState.value = _uiState.value.copy(currentTab = tab)
         if (tab == PrimaryAppTab.HOME) {
             refreshLocalDirectories()
+        } else if (tab == PrimaryAppTab.HAVEN_SURF) {
+            if (_uiState.value.remoteResults.isEmpty() && !_uiState.value.isSearching) {
+                executeHavenSurfSearch(isNewSearch = true)
+            }
         }
     }
 
     fun selectHomeTab(tab: HomeNavigationTab) {
+        prefs.edit().putString("home_tab", tab.name).apply()
         _uiState.value = _uiState.value.copy(homeTab = tab)
         refreshLocalDirectories()
     }
