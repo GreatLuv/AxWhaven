@@ -26,7 +26,7 @@ enum class HomeNavigationTab {
 data class WallpaperUiState(
     // Global Navigation & Theme
     val currentTab: PrimaryAppTab = PrimaryAppTab.HOME,
-    val currentTheme: AppThemeMode = AppThemeMode.OBSIDIAN_VIOLET,
+    val currentTheme: AppThemeMode = AppThemeMode.AMOLED_BLACK,
 
     // Home Screen State
     val homeTab: HomeNavigationTab = HomeNavigationTab.COLLECTIONS,
@@ -95,8 +95,8 @@ class WallpaperViewModel(
     private var autocompleteJob: Job? = null
 
     init {
-        val savedThemeId = prefs.getString("theme_mode", AppThemeMode.OBSIDIAN_VIOLET.id)
-        val loadedTheme = AppThemeMode.values().find { it.id == savedThemeId } ?: AppThemeMode.OBSIDIAN_VIOLET
+        val savedThemeId = prefs.getString("theme_mode", AppThemeMode.AMOLED_BLACK.id)
+        val loadedTheme = AppThemeMode.values().find { it.id == savedThemeId } ?: AppThemeMode.AMOLED_BLACK
 
         val savedRatingToken = prefs.getString("content_rating", ContentRating.SFW.token)
         val loadedRating = ContentRating.values().find { it.token == savedRatingToken } ?: ContentRating.SFW

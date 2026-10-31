@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.AxWhaven" parent="android:Theme.Material.NoActionBar">
-        <!-- Native Dark Obsidian splash & window background (eliminates white flash on launch) -->
-        <item name="android:windowBackground">#090A0F</item>
-        <item name="android:windowSplashScreenBackground">#090A0F</item>
+        <!-- Native Pure AMOLED Black splash & window background (eliminates white flash on launch) -->
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowSplashScreenBackground">#000000</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/app_icon</item>
 
         <!-- Status & Navigation Bars -->
-        <item name="android:statusBarColor">#090A0F</item>
-        <item name="android:navigationBarColor">#090A0F</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
