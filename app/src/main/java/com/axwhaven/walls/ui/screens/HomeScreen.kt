@@ -3,13 +3,17 @@ package com.axwhaven.walls.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -51,6 +55,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.axwhaven.walls.HomeNavigationTab
@@ -324,7 +330,7 @@ fun HomeScreen(
 
                 // 2. SEGMENTED NAVIGATION TOGGLE ("Collections" | "All Wallpapers")
                 val isCollections = uiState.homeTab == HomeNavigationTab.COLLECTIONS
-                Row(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp)
@@ -347,19 +353,41 @@ fun HomeScreen(
                             RoundedCornerShape(24.dp)
                         )
                         .padding(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = Alignment.CenterStart
                 ) {
+                    val pillWidth = maxWidth / 2
+                    val targetTabOffset = if (isCollections) 0f else 1f
+                    val animatedTabOffset by animateFloatAsState(
+                        targetValue = targetTabOffset,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        ),
+                        label = "SegmentedPillOffset"
+                    )
+
                     val activeGlassPill = if (colors.isGlassmorphism) Color(0x40FFFFFF) else colors.surfaceElevated
-                    val collectionsBg by animateColorAsState(
-                        targetValue = if (isCollections) activeGlassPill else Color.Transparent,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label = "ColTabBg"
+
+                    // Smooth horizontal sliding indicator pill
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(pillWidth)
+                            .offset {
+                                IntOffset(
+                                    x = (animatedTabOffset * pillWidth.toPx()).roundToInt(),
+                                    y = 0
+                                )
+                            }
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(activeGlassPill)
+                            .then(
+                                if (colors.isGlassmorphism) {
+                                    Modifier.border(0.8.dp, Color(0x55FFFFFF), RoundedCornerShape(20.dp))
+                                } else Modifier
+                            )
                     )
-                    val allWallpapersBg by animateColorAsState(
-                        targetValue = if (!isCollections) activeGlassPill else Color.Transparent,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label = "AllTabBg"
-                    )
+
                     val collectionsTextColor by animateColorAsState(
                         targetValue = if (isCollections) colors.textPrimary else colors.textMuted,
                         label = "ColTabText"
@@ -369,73 +397,66 @@ fun HomeScreen(
                         label = "AllTabText"
                     )
 
-                    // Tab 1: Collections
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(collectionsBg)
-                            .then(
-                                if (isCollections && colors.isGlassmorphism) {
-                                    Modifier.border(0.8.dp, Color(0x55FFFFFF), RoundedCornerShape(20.dp))
-                                } else Modifier
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true, color = colors.primaryAccent)
-                            ) { onTabSelect(HomeNavigationTab.COLLECTIONS) },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = collectionsTextColor,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Collections",
-                                fontSize = 13.5.sp,
-                                fontWeight = if (isCollections) FontWeight.SemiBold else FontWeight.Medium,
-                                color = collectionsTextColor
-                            )
+                        // Tab 1: Collections
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple(bounded = true, color = colors.primaryAccent)
+                                ) { onTabSelect(HomeNavigationTab.COLLECTIONS) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = collectionsTextColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Collections",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (isCollections) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = collectionsTextColor
+                                )
+                            }
                         }
-                    }
 
-                    // Tab 2: All Wallpapers
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(allWallpapersBg)
-                            .then(
-                                if (!isCollections && colors.isGlassmorphism) {
-                                    Modifier.border(0.8.dp, Color(0x55FFFFFF), RoundedCornerShape(20.dp))
-                                } else Modifier
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true, color = colors.primaryAccent)
-                            ) { onTabSelect(HomeNavigationTab.ALL_WALLPAPERS) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = allWallpapersTextColor,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "All Wallpapers",
-                                fontSize = 13.5.sp,
-                                fontWeight = if (!isCollections) FontWeight.SemiBold else FontWeight.Medium,
-                                color = allWallpapersTextColor
-                            )
+                        // Tab 2: All Wallpapers
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple(bounded = true, color = colors.primaryAccent)
+                                ) { onTabSelect(HomeNavigationTab.ALL_WALLPAPERS) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.GridView,
+                                    contentDescription = null,
+                                    tint = allWallpapersTextColor,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "All Wallpapers",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (!isCollections) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = allWallpapersTextColor
+                                )
+                            }
                         }
                     }
                 }
@@ -547,7 +568,31 @@ fun HomeScreen(
                 AnimatedContent(
                     targetState = uiState.homeTab,
                     transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(150))
+                        if (targetState.ordinal > initialState.ordinal) {
+                            // Forward (Collections -> All Wallpapers): slide in from right, slide out to left
+                            (slideInHorizontally(
+                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                initialOffsetX = { fullWidth -> fullWidth }
+                            ) + fadeIn(animationSpec = tween(260))).togetherWith(
+                                slideOutHorizontally(
+                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> -fullWidth }
+                                ) + fadeOut(animationSpec = tween(220))
+                            )
+                        } else if (targetState.ordinal < initialState.ordinal) {
+                            // Backward / Inverse (All Wallpapers -> Collections): slide in from left, slide out to right
+                            (slideInHorizontally(
+                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                initialOffsetX = { fullWidth -> -fullWidth }
+                            ) + fadeIn(animationSpec = tween(260))).togetherWith(
+                                slideOutHorizontally(
+                                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> fullWidth }
+                                ) + fadeOut(animationSpec = tween(220))
+                            )
+                        } else {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                        }
                     },
                     label = "HomeContentTransition",
                     modifier = Modifier.fillMaxSize()

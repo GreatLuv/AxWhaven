@@ -11,9 +11,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -290,7 +293,31 @@ class MainActivity : ComponentActivity() {
                             AnimatedContent(
                                 targetState = uiState.currentTab,
                                 transitionSpec = {
-                                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                                    if (targetState.ordinal > initialState.ordinal) {
+                                        // Forward (Home -> AxW Surf -> Settings): slide in from right, slide out to left
+                                        (slideInHorizontally(
+                                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                            initialOffsetX = { fullWidth -> fullWidth }
+                                        ) + fadeIn(animationSpec = tween(280))).togetherWith(
+                                            slideOutHorizontally(
+                                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { fullWidth -> -fullWidth }
+                                            ) + fadeOut(animationSpec = tween(220))
+                                        )
+                                    } else if (targetState.ordinal < initialState.ordinal) {
+                                        // Inverse / Backward (Settings -> AxW Surf -> Home): slide in from left, slide out to right
+                                        (slideInHorizontally(
+                                            animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                            initialOffsetX = { fullWidth -> -fullWidth }
+                                        ) + fadeIn(animationSpec = tween(280))).togetherWith(
+                                            slideOutHorizontally(
+                                                animationSpec = tween(320, easing = FastOutSlowInEasing),
+                                                targetOffsetX = { fullWidth -> fullWidth }
+                                            ) + fadeOut(animationSpec = tween(220))
+                                        )
+                                    } else {
+                                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                                    }
                                 },
                                 label = "PrimaryTabTransition"
                             ) { tab ->

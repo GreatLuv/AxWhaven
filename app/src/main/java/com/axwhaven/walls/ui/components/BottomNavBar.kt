@@ -29,8 +29,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.axwhaven.walls.model.PrimaryAppTab
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 
@@ -70,7 +72,7 @@ fun AxWhavenBottomNavBar(
             Brush.linearGradient(listOf(colors.bottomNavBorder, colors.bottomNavBorder))
         }
 
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
@@ -82,39 +84,94 @@ fun AxWhavenBottomNavBar(
                 .clip(RoundedCornerShape(32.dp))
                 .background(navBackgroundBrush)
                 .border(1.dp, navBorderBrush, RoundedCornerShape(32.dp))
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceAround
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.CenterStart
         ) {
-            NavBarItem(
-                tab = PrimaryAppTab.HOME,
-                icon = Icons.Default.Home,
-                label = "Home",
-                isSelected = currentTab == PrimaryAppTab.HOME,
-                colors = colors,
-                onClick = { onTabSelect(PrimaryAppTab.HOME) },
-                modifier = Modifier.weight(1f)
+            val totalTabs = 3
+            val tabWidth = maxWidth / totalTabs
+            val activeTabIndex = currentTab.ordinal
+
+            val animatedTabIndex by animateFloatAsState(
+                targetValue = activeTabIndex.toFloat(),
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                label = "NavSlidingPillOffset"
             )
 
-            NavBarItem(
-                tab = PrimaryAppTab.HAVEN_SURF,
-                icon = Icons.Default.Explore,
-                label = "AxW Surf",
-                isSelected = currentTab == PrimaryAppTab.HAVEN_SURF,
-                colors = colors,
-                onClick = { onTabSelect(PrimaryAppTab.HAVEN_SURF) },
-                modifier = Modifier.weight(1f)
+            val activePillColor = if (colors.isGlassmorphism) {
+                colors.primaryAccent.copy(alpha = 0.22f)
+            } else {
+                colors.primaryAccent.copy(alpha = 0.14f)
+            }
+
+            // Smooth horizontal sliding indicator pill across the 3 bottom tabs
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(tabWidth)
+                    .offset {
+                        IntOffset(
+                            x = (animatedTabIndex * tabWidth.toPx()).roundToInt(),
+                            y = 0
+                        )
+                    }
+                    .padding(horizontal = 4.dp)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(activePillColor)
+                    .then(
+                        if (colors.isGlassmorphism) {
+                            Modifier.border(
+                                0.8.dp,
+                                Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x20FFFFFF))),
+                                RoundedCornerShape(26.dp)
+                            )
+                        } else {
+                            Modifier.border(
+                                0.8.dp,
+                                colors.primaryAccent.copy(alpha = 0.3f),
+                                RoundedCornerShape(26.dp)
+                            )
+                        }
+                    )
             )
 
-            NavBarItem(
-                tab = PrimaryAppTab.SETTINGS,
-                icon = Icons.Default.Settings,
-                label = "Settings",
-                isSelected = currentTab == PrimaryAppTab.SETTINGS,
-                colors = colors,
-                onClick = { onTabSelect(PrimaryAppTab.SETTINGS) },
-                modifier = Modifier.weight(1f)
-            )
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                NavBarItem(
+                    tab = PrimaryAppTab.HOME,
+                    icon = Icons.Default.Home,
+                    label = "Home",
+                    isSelected = currentTab == PrimaryAppTab.HOME,
+                    colors = colors,
+                    onClick = { onTabSelect(PrimaryAppTab.HOME) },
+                    modifier = Modifier.weight(1f)
+                )
+
+                NavBarItem(
+                    tab = PrimaryAppTab.HAVEN_SURF,
+                    icon = Icons.Default.Explore,
+                    label = "AxW Surf",
+                    isSelected = currentTab == PrimaryAppTab.HAVEN_SURF,
+                    colors = colors,
+                    onClick = { onTabSelect(PrimaryAppTab.HAVEN_SURF) },
+                    modifier = Modifier.weight(1f)
+                )
+
+                NavBarItem(
+                    tab = PrimaryAppTab.SETTINGS,
+                    icon = Icons.Default.Settings,
+                    label = "Settings",
+                    isSelected = currentTab == PrimaryAppTab.SETTINGS,
+                    colors = colors,
+                    onClick = { onTabSelect(PrimaryAppTab.SETTINGS) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
@@ -141,18 +198,6 @@ fun NavBarItem(
         label = "NavTextColor"
     )
 
-    val activePillColor = if (colors.isGlassmorphism) {
-        colors.primaryAccent.copy(alpha = 0.22f)
-    } else {
-        colors.primaryAccent.copy(alpha = 0.14f)
-    }
-
-    val pillBackground by animateColorAsState(
-        targetValue = if (isSelected) activePillColor else Color.Transparent,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "NavPillBackground"
-    )
-
     val iconScale by animateFloatAsState(
         targetValue = if (isSelected) 1.08f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
@@ -161,20 +206,14 @@ fun NavBarItem(
 
     Box(
         modifier = modifier
-            .height(52.dp)
+            .fillMaxHeight()
             .clip(RoundedCornerShape(26.dp))
-            .background(pillBackground)
-            .then(
-                if (isSelected && colors.isGlassmorphism) {
-                    Modifier.border(0.8.dp, Color(0x55FFFFFF), RoundedCornerShape(26.dp))
-                } else Modifier
-            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(bounded = true, color = colors.primaryAccent),
                 onClick = onClick
             )
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
