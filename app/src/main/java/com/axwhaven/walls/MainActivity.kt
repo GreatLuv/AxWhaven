@@ -292,36 +292,36 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            val TabTransitionDuration = 200
+                            val TabTransitionDuration = 175
                             val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
 
                             AnimatedContent(
                                 targetState = uiState.currentTab,
                                 transitionSpec = {
                                     if (targetState.ordinal > initialState.ordinal) {
-                                        // Forward (Home -> AxW Surf -> Settings): fast initial burst, decelerating smoothly
+                                        // Forward (Home -> AxW Surf -> Settings): fast initial burst, outgoing page disappears fast
                                         (slideInHorizontally(
                                             animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                             initialOffsetX = { fullWidth -> fullWidth }
-                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
+                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
                                             slideOutHorizontally(
                                                 animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                                 targetOffsetX = { fullWidth -> -fullWidth }
-                                            ) + fadeOut(animationSpec = tween(TabTransitionDuration - 60, easing = LinearEasing))
+                                            ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
                                         )
                                     } else if (targetState.ordinal < initialState.ordinal) {
-                                        // Inverse / Backward (Settings -> AxW Surf -> Home): fast initial burst, decelerating smoothly
+                                        // Inverse / Backward (Settings -> AxW Surf -> Home): fast initial burst, outgoing page disappears fast
                                         (slideInHorizontally(
                                             animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                             initialOffsetX = { fullWidth -> -fullWidth }
-                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
+                                        ) + fadeIn(animationSpec = tween(TabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
                                             slideOutHorizontally(
                                                 animationSpec = tween(TabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                                 targetOffsetX = { fullWidth -> fullWidth }
-                                            ) + fadeOut(animationSpec = tween(TabTransitionDuration - 60, easing = LinearEasing))
+                                            ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
                                         )
                                     } else {
-                                        fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
+                                        fadeIn(animationSpec = tween(120)) togetherWith fadeOut(animationSpec = tween(90))
                                     }
                                 },
                                 label = "PrimaryTabTransition"

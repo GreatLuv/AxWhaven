@@ -339,8 +339,6 @@ fun HomeScreen(
                 // 2. SEGMENTED NAVIGATION TOGGLE ("Collections" | "All Wallpapers")
                 val isCollections = uiState.homeTab == HomeNavigationTab.COLLECTIONS
                 val EmphasizedDecelerateEasing = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
-                val colInteraction = remember { MutableInteractionSource() }
-                val allInteraction = remember { MutableInteractionSource() }
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -372,7 +370,7 @@ fun HomeScreen(
                     val animatedTabOffset by animateFloatAsState(
                         targetValue = targetTabOffset,
                         animationSpec = tween(
-                            durationMillis = 200,
+                            durationMillis = 170,
                             easing = EmphasizedDecelerateEasing
                         ),
                         label = "SegmentedPillOffset"
@@ -413,25 +411,17 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Tab 1: Collections (Instant on-down response)
+                        // Tab 1: Collections (Instant on-down response, clean - no lingering tap highlight)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(20.dp))
-                                .indication(colInteraction, ripple(bounded = true, color = colors.primaryAccent))
                                 .pointerInput(Unit) {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false)
                                         onTabSelect(HomeNavigationTab.COLLECTIONS)
-                                        val press = PressInteraction.Press(down.position)
-                                        colInteraction.tryEmit(press)
-                                        val up = waitForUpOrCancellation()
-                                        if (up != null) {
-                                            colInteraction.tryEmit(PressInteraction.Release(press))
-                                        } else {
-                                            colInteraction.tryEmit(PressInteraction.Cancel(press))
-                                        }
+                                        waitForUpOrCancellation()
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -453,25 +443,17 @@ fun HomeScreen(
                             }
                         }
 
-                        // Tab 2: All Wallpapers (Instant on-down response)
+                        // Tab 2: All Wallpapers (Instant on-down response, clean - no lingering tap highlight)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(20.dp))
-                                .indication(allInteraction, ripple(bounded = true, color = colors.primaryAccent))
                                 .pointerInput(Unit) {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false)
                                         onTabSelect(HomeNavigationTab.ALL_WALLPAPERS)
-                                        val press = PressInteraction.Press(down.position)
-                                        allInteraction.tryEmit(press)
-                                        val up = waitForUpOrCancellation()
-                                        if (up != null) {
-                                            allInteraction.tryEmit(PressInteraction.Release(press))
-                                        } else {
-                                            allInteraction.tryEmit(PressInteraction.Cancel(press))
-                                        }
+                                        waitForUpOrCancellation()
                                     }
                                 },
                             contentAlignment = Alignment.Center
@@ -599,35 +581,35 @@ fun HomeScreen(
                     }
 
                 // 4. MAIN CONTENT AREA (Collections Grid vs All Wallpapers Grid)
-                val HomeTabTransitionDuration = 200
+                val HomeTabTransitionDuration = 175
 
                 AnimatedContent(
                     targetState = uiState.homeTab,
                     transitionSpec = {
                         if (targetState.ordinal > initialState.ordinal) {
-                            // Forward (Collections -> All Wallpapers): fast initial burst, decelerating smoothly
+                            // Forward (Collections -> All Wallpapers): fast initial burst, outgoing page disappears fast
                             (slideInHorizontally(
                                 animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                 initialOffsetX = { fullWidth -> fullWidth }
-                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
+                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
                                 slideOutHorizontally(
                                     animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                     targetOffsetX = { fullWidth -> -fullWidth }
-                                ) + fadeOut(animationSpec = tween(HomeTabTransitionDuration - 60, easing = LinearEasing))
+                                ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
                             )
                         } else if (targetState.ordinal < initialState.ordinal) {
-                            // Backward / Inverse (All Wallpapers -> Collections): fast initial burst, decelerating smoothly
+                            // Backward / Inverse (All Wallpapers -> Collections): fast initial burst, outgoing page disappears fast
                             (slideInHorizontally(
                                 animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                 initialOffsetX = { fullWidth -> -fullWidth }
-                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 40, easing = LinearEasing))).togetherWith(
+                            ) + fadeIn(animationSpec = tween(HomeTabTransitionDuration - 55, easing = LinearEasing))).togetherWith(
                                 slideOutHorizontally(
                                     animationSpec = tween(HomeTabTransitionDuration, easing = EmphasizedDecelerateEasing),
                                     targetOffsetX = { fullWidth -> fullWidth }
-                                ) + fadeOut(animationSpec = tween(HomeTabTransitionDuration - 60, easing = LinearEasing))
+                                ) + fadeOut(animationSpec = tween(90, easing = LinearEasing))
                             )
                         } else {
-                            fadeIn(animationSpec = tween(150)) togetherWith fadeOut(animationSpec = tween(120))
+                            fadeIn(animationSpec = tween(120)) togetherWith fadeOut(animationSpec = tween(90))
                         }
                     },
                     label = "HomeContentTransition",

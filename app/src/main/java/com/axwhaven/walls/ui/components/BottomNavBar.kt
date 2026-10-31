@@ -103,7 +103,7 @@ fun AxWhavenBottomNavBar(
             val animatedTabIndex by animateFloatAsState(
                 targetValue = activeTabIndex.toFloat(),
                 animationSpec = tween(
-                    durationMillis = 200,
+                    durationMillis = 170,
                     easing = EmphasizedDecelerateEasing
                 ),
                 label = "NavSlidingPillOffset"
@@ -199,41 +199,31 @@ fun NavBarItem(
 
     val animatedIconColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
+        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
         label = "NavIconColor"
     )
 
     val animatedTextColor by animateColorAsState(
         targetValue = if (isSelected) colors.primaryAccent else colors.textMuted,
-        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
+        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
         label = "NavTextColor"
     )
 
     val iconScale by animateFloatAsState(
         targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = tween(durationMillis = 180, easing = EmphasizedDecelerateEasing),
+        animationSpec = tween(durationMillis = 150, easing = EmphasizedDecelerateEasing),
         label = "NavIconScale"
     )
-
-    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = modifier
             .fillMaxHeight()
             .clip(RoundedCornerShape(26.dp))
-            .indication(interactionSource, ripple(bounded = true, color = colors.primaryAccent))
             .pointerInput(tab) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     onClick()
-                    val press = PressInteraction.Press(down.position)
-                    interactionSource.tryEmit(press)
-                    val up = waitForUpOrCancellation()
-                    if (up != null) {
-                        interactionSource.tryEmit(PressInteraction.Release(press))
-                    } else {
-                        interactionSource.tryEmit(PressInteraction.Cancel(press))
-                    }
+                    waitForUpOrCancellation()
                 }
             }
             .padding(horizontal = 8.dp, vertical = 4.dp),
