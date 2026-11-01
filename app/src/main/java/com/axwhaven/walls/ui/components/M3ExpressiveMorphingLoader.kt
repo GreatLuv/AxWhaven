@@ -39,7 +39,7 @@ fun M3ExpressiveMorphingLoader(
     indicatorColor: Color? = null
 ) {
     val actualContainerColor = containerColor ?: if (colors.isGlassmorphism) {
-        Color(0x334EEDB4)
+        colors.mintPillBg
     } else {
         MaterialTheme.colorScheme.primaryContainer
     }

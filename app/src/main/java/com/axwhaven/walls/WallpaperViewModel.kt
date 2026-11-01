@@ -94,6 +94,8 @@ class WallpaperViewModel(
         )
     )
     val uiState: StateFlow<WallpaperUiState> = _uiState.asStateFlow()
+    val isReady: StateFlow<Boolean> get() = _isReady
+    private val _isReady = MutableStateFlow(false)
 
     private var searchDebounceJob: Job? = null
     private var autocompleteJob: Job? = null
@@ -129,6 +131,7 @@ class WallpaperViewModel(
         )
 
         refreshLocalDirectories()
+        _isReady.value = true
     }
 
     fun selectTheme(theme: AppThemeMode) {

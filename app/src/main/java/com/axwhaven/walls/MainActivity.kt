@@ -9,6 +9,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.CubicBezierEasing
@@ -56,11 +58,19 @@ import com.axwhaven.walls.ui.theme.ExpressiveMotion
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val vm = ViewModelProvider(this, WallpaperViewModel.provideFactory(this))[WallpaperViewModel::class.java]
+        val startupTime = System.currentTimeMillis()
+        splashScreen.setKeepOnScreenCondition {
+            // Keep splash on screen until persisted preferences & theme are loaded, guarded by 1-second timeout
+            val elapsed = System.currentTimeMillis() - startupTime
+            elapsed < 1000L && !vm.isReady.value
+        }
+
         setContent {
-            val vm: WallpaperViewModel = viewModel(factory = WallpaperViewModel.provideFactory(this))
             val uiState by vm.uiState.collectAsState()
             val snackbarHostState = remember { SnackbarHostState() }
             var activePreviewItem by remember { mutableStateOf<WallpaperItem?>(null) }

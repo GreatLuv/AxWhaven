@@ -150,10 +150,15 @@ fun WallpaperImage(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
+                val skeletonColor = if (colors.isGlassmorphism) {
+                    colors.surfaceElevated
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(colors.surfaceElevated.copy(alpha = pulseAlpha)),
+                        .background(skeletonColor.copy(alpha = pulseAlpha)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(

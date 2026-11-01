@@ -85,6 +85,9 @@ import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.FrostyFastBadgeBgGreen
+import com.axwhaven.walls.ui.theme.FrostyFastBadgeGreen
+import com.axwhaven.walls.ui.theme.FrostyFastIconBoxBgGreen
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -241,7 +244,7 @@ fun HavenSurfScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
         ) {
             // =========================================================================
             // TOP HEADER: HAVEN SURF DISCOVERY HUB & PROVIDER SELECTOR PILL (COLLAPSIBLE)
@@ -1491,7 +1494,7 @@ fun ProviderCookieDialog(
                     Text(
                         text = statusNote,
                         fontSize = 12.sp,
-                        color = if (hasValidCookie) Color(0xFF10B981) else colors.textSecondary
+                        color = if (hasValidCookie) FrostyFastBadgeGreen else colors.textSecondary
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Box(
@@ -1782,10 +1785,10 @@ fun DownloadQualityDialog(
                         title = "High-Quality JPEG",
                         subtitle = "Fast download, optimized file size with full visual fidelity",
                         badge = "Fast",
-                        badgeBgColor = if (colors.isGlassmorphism) Color(0x3010B981) else MaterialTheme.colorScheme.tertiaryContainer,
-                        badgeTextColor = if (colors.isGlassmorphism) Color(0xFF10B981) else MaterialTheme.colorScheme.onTertiaryContainer,
-                        iconBoxBgColor = if (colors.isGlassmorphism) Color(0x2810B981) else MaterialTheme.colorScheme.tertiaryContainer,
-                        iconTint = if (colors.isGlassmorphism) Color(0xFF10B981) else MaterialTheme.colorScheme.onTertiaryContainer,
+                        badgeBgColor = if (colors.isGlassmorphism) FrostyFastBadgeBgGreen else MaterialTheme.colorScheme.tertiaryContainer,
+                        badgeTextColor = if (colors.isGlassmorphism) FrostyFastBadgeGreen else MaterialTheme.colorScheme.onTertiaryContainer,
+                        iconBoxBgColor = if (colors.isGlassmorphism) FrostyFastIconBoxBgGreen else MaterialTheme.colorScheme.tertiaryContainer,
+                        iconTint = if (colors.isGlassmorphism) FrostyFastBadgeGreen else MaterialTheme.colorScheme.onTertiaryContainer,
                         icon = Icons.Default.Speed,
                         colors = colors,
                         onClick = onDownloadCompressed
@@ -1858,6 +1861,27 @@ private fun DownloadOptionCard(
         )
     } else Modifier
 
+    val animatedIconBoxBg by animateColorAsState(
+        targetValue = iconBoxBgColor,
+        animationSpec = ExpressiveMotion.FastEffectsColor,
+        label = "DownloadIconBoxBg"
+    )
+    val animatedIconTint by animateColorAsState(
+        targetValue = iconTint,
+        animationSpec = ExpressiveMotion.FastEffectsColor,
+        label = "DownloadIconTint"
+    )
+    val animatedBadgeBg by animateColorAsState(
+        targetValue = badgeBgColor,
+        animationSpec = ExpressiveMotion.FastEffectsColor,
+        label = "DownloadBadgeBg"
+    )
+    val animatedBadgeText by animateColorAsState(
+        targetValue = badgeTextColor,
+        animationSpec = ExpressiveMotion.FastEffectsColor,
+        label = "DownloadBadgeText"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1876,13 +1900,13 @@ private fun DownloadOptionCard(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(iconBoxBgColor),
+                .background(animatedIconBoxBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = iconTint,
+                tint = animatedIconTint,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -1899,14 +1923,14 @@ private fun DownloadOptionCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(badgeBgColor)
+                        .background(animatedBadgeBg)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = badge,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = badgeTextColor
+                        color = animatedBadgeText
                     )
                 }
             }

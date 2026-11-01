@@ -12,6 +12,13 @@ import androidx.compose.ui.unit.dp
  */
 val FloatingDockClearance: Dp = 150.dp
 
+/**
+ * Named green accent tokens for Frosty Glass mode (replaces inline literals).
+ */
+val FrostyFastBadgeGreen: Color = Color(0xFF10B981)
+val FrostyFastBadgeBgGreen: Color = Color(0x3010B981)
+val FrostyFastIconBoxBgGreen: Color = Color(0x2810B981)
+
 val LocalAxWhavenColors = staticCompositionLocalOf<AxWhavenColors> {
     getThemeColors(AppThemeMode.EXPRESSIVE)
 }

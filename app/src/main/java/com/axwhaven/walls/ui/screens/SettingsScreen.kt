@@ -48,6 +48,8 @@ import com.axwhaven.walls.ui.theme.AppThemeMode
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.FrostyFastBadgeGreen
+import com.axwhaven.walls.ui.theme.FrostyFastIconBoxBgGreen
 import com.axwhaven.walls.ui.theme.PixelPaletteSeed
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -658,7 +660,7 @@ fun SettingsScreen(
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(
                                                 if (colors.isGlassmorphism) {
-                                                    if (uiState.isUsingDefaultStorage) Color(0x2810B981)
+                                                    if (uiState.isUsingDefaultStorage) FrostyFastIconBoxBgGreen
                                                     else colors.primaryAccent.copy(alpha = 0.2f)
                                                 } else {
                                                     if (uiState.isUsingDefaultStorage) MaterialTheme.colorScheme.tertiaryContainer
@@ -672,7 +674,7 @@ fun SettingsScreen(
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (colors.isGlassmorphism) {
-                                                if (uiState.isUsingDefaultStorage) Color(0xFF10B981) else colors.primaryAccent
+                                                if (uiState.isUsingDefaultStorage) FrostyFastBadgeGreen else colors.primaryAccent
                                             } else {
                                                 if (uiState.isUsingDefaultStorage) MaterialTheme.colorScheme.onTertiaryContainer
                                                 else MaterialTheme.colorScheme.onSecondaryContainer
