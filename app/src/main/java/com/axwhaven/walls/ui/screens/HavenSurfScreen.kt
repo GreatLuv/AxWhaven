@@ -1087,16 +1087,19 @@ fun ProviderCookieDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 if (isWebViewVisible) {
+                    var statusNote by remember { mutableStateOf("Complete the Cloudflare verification challenge below.") }
+                    var hasValidCookie by remember { mutableStateOf(false) }
+
                     Text(
-                        text = "Complete the verification challenge below. Once verified, tap 'Capture & Save Cookie'.",
+                        text = statusNote,
                         fontSize = 12.sp,
-                        color = colors.textSecondary
+                        color = if (hasValidCookie) Color(0xFF10B981) else colors.textSecondary
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp)
+                            .height(380.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .border(1.dp, colors.cardBorder, RoundedCornerShape(12.dp))
                     ) {
@@ -1105,14 +1108,39 @@ fun ProviderCookieDialog(
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
+                                    settings.databaseEnabled = true
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
                                     settings.userAgentString = WebSettings.getDefaultUserAgent(ctx)
+                                    val cookieManager = CookieManager.getInstance()
+                                    cookieManager.setAcceptCookie(true)
+                                    cookieManager.setAcceptThirdPartyCookies(this, true)
+
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageFinished(view: WebView?, url: String?) {
                                             super.onPageFinished(view, url)
-                                            val c = CookieManager.getInstance().getCookie(cookieDomain)
+                                            cookieManager.flush()
+                                            val c = cookieManager.getCookie(cookieDomain)
+                                            val title = view?.title.orEmpty()
+                                            val isChallenge = title.contains("Just a moment", ignoreCase = true) ||
+                                                title.contains("Cloudflare", ignoreCase = true) ||
+                                                url?.contains("__cf_chl") == true ||
+                                                url?.contains("challenge") == true
+
                                             if (!c.isNullOrBlank() && c.contains("cf_clearance")) {
-                                                CookieManager.getInstance().flush()
-                                                onSaveCookie(c)
+                                                hasValidCookie = true
+                                                if (!isChallenge) {
+                                                    statusNote = "Verification successful! Cookie captured."
+                                                    onSaveCookie(c)
+                                                } else {
+                                                    statusNote = "Challenge active. Please complete the Turnstile checkbox."
+                                                }
+                                            } else {
+                                                statusNote = if (isChallenge) {
+                                                    "Challenge active. Please complete the Turnstile checkbox."
+                                                } else {
+                                                    "Complete the verification challenge above, then tap 'Capture & Save Cookie'."
+                                                }
                                             }
                                         }
                                     }
@@ -1125,9 +1153,14 @@ fun ProviderCookieDialog(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = {
-                            CookieManager.getInstance().flush()
-                            val c = CookieManager.getInstance().getCookie(cookieDomain) ?: ""
-                            onSaveCookie(c)
+                            val cm = CookieManager.getInstance()
+                            cm.flush()
+                            val c = cm.getCookie(cookieDomain).orEmpty()
+                            if (c.contains("cf_clearance") || c.isNotBlank()) {
+                                onSaveCookie(c)
+                            } else {
+                                statusNote = "Challenge not yet verified. Please complete the checkbox above first."
+                            }
                         },
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(

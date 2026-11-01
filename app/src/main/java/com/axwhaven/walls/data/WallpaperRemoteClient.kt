@@ -57,16 +57,37 @@ class WallpaperRemoteClient(private val context: Context) {
             when (provider) {
                 ProviderSite.YANDERE, ProviderSite.KONACHAN -> {
                     val tagBase = if (provider == ProviderSite.KONACHAN) "https://konachan.net" else provider.baseUrl
-                    val url = "$tagBase/tag.json?name=${urlEncode(queryWord)}&limit=10"
+                    val cleanWord = queryWord.replace(' ', '_').lowercase()
+                    val url = "$tagBase/tag.json?name=${urlEncode(cleanWord)}&order=count&limit=25"
                     val body = httpGet(url)
                     val array = JSONArray(body)
-                    val results = mutableListOf<String>()
+                    data class BooruTag(val name: String, val count: Int, val type: Int)
+                    val tagList = mutableListOf<BooruTag>()
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
                         val name = obj.optString("name")
-                        if (name.isNotBlank()) results.add(name)
+                        val count = obj.optInt("count", 0)
+                        val type = obj.optInt("type", 0)
+                        if (name.isNotBlank()) {
+                            tagList.add(BooruTag(name, count, type))
+                        }
                     }
-                    results
+                    val sorted = tagList.sortedWith(
+                        compareBy<BooruTag> { tag ->
+                            when {
+                                tag.name.equals(cleanWord, ignoreCase = true) -> 0
+                                tag.type == 3 -> 1 // Copyright/franchise tag (e.g. wuthering_waves, genshin_impact)
+                                tag.type == 0 -> 2 // General tag
+                                else -> 3 // Character (type 4), artist (type 1), etc.
+                            }
+                        }.thenByDescending { it.count }
+                    ).map { it.name }.distinct().take(12)
+
+                    if (sorted.none { it.equals(cleanWord, ignoreCase = true) }) {
+                        listOf(cleanWord) + sorted.take(11)
+                    } else {
+                        sorted
+                    }
                 }
                 ProviderSite.SAFEBOORU, ProviderSite.GELBOORU -> {
                     val url = "https://safebooru.org/autocomplete.php?q=${urlEncode(queryWord)}"
@@ -260,12 +281,12 @@ class WallpaperRemoteClient(private val context: Context) {
                     )
                 }
             }
-            if (items.isEmpty() && provider == ProviderSite.KONACHAN && filters.rating != ContentRating.SFW) {
-                throw IllegalStateException("Konachan NSFW requires Cloudflare verification or cookie. Tap to pass cookie.")
-            }
             items
         } catch (e: Exception) {
-            if (provider == ProviderSite.KONACHAN && filters.rating != ContentRating.SFW) {
+            val isCf = e.message?.contains("403") == true ||
+                e.message?.contains("Cloudflare", ignoreCase = true) == true ||
+                e.message?.contains("Just a moment", ignoreCase = true) == true
+            if (isCf && provider == ProviderSite.KONACHAN && filters.rating != ContentRating.SFW) {
                 throw IllegalStateException("Konachan NSFW requires Cloudflare verification or cookie. Tap to pass cookie.", e)
             } else {
                 throw e
@@ -556,12 +577,16 @@ class WallpaperRemoteClient(private val context: Context) {
                     )
                 }
             }
-            if (items.isEmpty()) {
-                throw IllegalStateException("Danbooru requires Cloudflare verification or cookie. Tap to pass cookie.")
-            }
             items
         } catch (e: Exception) {
-            throw IllegalStateException("Danbooru requires Cloudflare verification or cookie. Tap to pass cookie.", e)
+            val isCf = e.message?.contains("403") == true ||
+                e.message?.contains("Cloudflare", ignoreCase = true) == true ||
+                e.message?.contains("Just a moment", ignoreCase = true) == true
+            if (isCf) {
+                throw IllegalStateException("Danbooru requires Cloudflare verification or cookie. Tap to pass cookie.", e)
+            } else {
+                throw e
+            }
         }
     }
 
@@ -597,9 +622,7 @@ class WallpaperRemoteClient(private val context: Context) {
 
         val savedKonachanCookie = if (urlString.contains("konachan.com")) konachanCookie else null
         val savedDanbooruCookie = if (urlString.contains("danbooru.donmai.us")) danbooruCookie else null
-        val combinedCookie = listOfNotNull(cookie, savedKonachanCookie, savedDanbooruCookie)
-            .filter { it.isNotBlank() }
-            .joinToString("; ")
+        val combinedCookie = mergeCookies(cookie, savedKonachanCookie, savedDanbooruCookie)
 
         val connection = (URL(urlString).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -608,6 +631,13 @@ class WallpaperRemoteClient(private val context: Context) {
             setRequestProperty("User-Agent", userAgent)
             setRequestProperty("Accept", "application/json, text/plain, text/html, */*")
             setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+            setRequestProperty("Sec-CH-UA-Mobile", "?1")
+            setRequestProperty("Sec-CH-UA-Platform", "\"Android\"")
+            if (urlString.contains("danbooru.donmai.us")) {
+                setRequestProperty("Referer", "https://danbooru.donmai.us/posts")
+            } else if (urlString.contains("konachan.com")) {
+                setRequestProperty("Referer", "https://konachan.com/post")
+            }
             if (combinedCookie.isNotBlank()) {
                 setRequestProperty("Cookie", combinedCookie)
             }
@@ -623,6 +653,29 @@ class WallpaperRemoteClient(private val context: Context) {
             return responseText
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun mergeCookies(vararg cookieStrings: String?): String {
+        val map = linkedMapOf<String, String>()
+        for (str in cookieStrings) {
+            if (str.isNullOrBlank()) continue
+            val parts = str.split(';')
+            for (part in parts) {
+                val trimmed = part.trim()
+                if (trimmed.isEmpty()) continue
+                val eqIdx = trimmed.indexOf('=')
+                if (eqIdx > 0) {
+                    val key = trimmed.substring(0, eqIdx).trim()
+                    val value = trimmed.substring(eqIdx + 1).trim()
+                    map[key] = value
+                } else {
+                    map[trimmed] = ""
+                }
+            }
+        }
+        return map.entries.joinToString("; ") { (k, v) ->
+            if (v.isEmpty()) k else "$k=$v"
         }
     }
 
