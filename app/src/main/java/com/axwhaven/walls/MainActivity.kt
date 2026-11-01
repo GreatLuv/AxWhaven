@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            AxWhavenDynamicTheme(themeMode = uiState.currentTheme) { colors ->
+            AxWhavenDynamicTheme(themeMode = uiState.currentTheme, paletteSeed = uiState.currentPalette) { colors ->
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -386,6 +386,7 @@ class MainActivity : ComponentActivity() {
                                             uiState = uiState,
                                             colors = colors,
                                             onThemeSelect = vm::selectTheme,
+                                            onPaletteSelect = vm::selectPaletteSeed,
                                             onBlurRadiusChange = vm::setBackgroundBlurRadius,
                                             onSelectDownloadFolder = { folderLauncher.launch(null) },
                                             onSetCustomPath = vm::setCustomStoragePath,

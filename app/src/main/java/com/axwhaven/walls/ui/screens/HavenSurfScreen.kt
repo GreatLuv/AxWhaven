@@ -1,6 +1,8 @@
 package com.axwhaven.walls.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -10,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -31,8 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +56,7 @@ import com.axwhaven.walls.WallpaperUiState
 import com.axwhaven.walls.model.*
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,6 +84,7 @@ fun HavenSurfScreen(
 ) {
     var showProviderDropdown by remember { mutableStateOf(false) }
     var downloadQualityTargetItem by remember { mutableStateOf<WallpaperItem?>(null) }
+    val haptics = LocalHapticFeedback.current
 
     val activeFilterCount = (if (uiState.filterState.rating != ContentRating.SFW) 1 else 0) +
             (if (uiState.filterState.resolution != ResolutionFilter.ALL) 1 else 0) +
@@ -126,11 +134,14 @@ fun HavenSurfScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .background(if (colors.isGlassmorphism) Color(0x2EFFFFFF) else colors.surfaceElevated)
-                            .border(
-                                1.dp,
-                                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF)))
-                                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                                RoundedCornerShape(20.dp)
+                            .then(
+                                if (colors.isGlassmorphism) {
+                                    Modifier.border(
+                                        1.dp,
+                                        Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))),
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                } else Modifier
                             )
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
@@ -162,32 +173,42 @@ fun HavenSurfScreen(
                     }
 
                     // Refined Provider Selector Dropdown Menu
-                    val menuShape = RoundedCornerShape(18.dp)
-                    val menuBorderBrush = if (colors.isGlassmorphism) {
-                        Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF)))
-                    } else {
-                        Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder))
-                    }
+                    val menuShape = RoundedCornerShape(24.dp)
+                    val menuBorderStroke = if (colors.isGlassmorphism) {
+                        BorderStroke(1.dp, Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))))
+                    } else null
 
                     DropdownMenu(
                         expanded = showProviderDropdown,
                         onDismissRequest = { showProviderDropdown = false },
                         shape = menuShape,
-                        containerColor = if (colors.isGlassmorphism) Color(0xEB11172A) else colors.surfaceElevated,
-                        border = BorderStroke(1.dp, menuBorderBrush),
+                        containerColor = if (colors.isGlassmorphism) Color(0xEB11172A) else colors.surfaceContainerHigh,
+                        border = menuBorderStroke,
                         shadowElevation = 8.dp,
                         modifier = Modifier
-                            .width(200.dp)
+                            .width(210.dp)
                             .clip(menuShape)
                     ) {
                         ProviderSite.values().forEach { provider ->
                             val isSelected = provider == uiState.activeProvider
+                            val itemShape = RoundedCornerShape(14.dp)
                             DropdownMenuItem(
+                                modifier = Modifier
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .clip(itemShape)
+                                    .background(
+                                        if (isSelected) {
+                                            if (colors.isGlassmorphism) Color(0x38FFFFFF)
+                                            else MaterialTheme.colorScheme.secondaryContainer
+                                        } else Color.Transparent
+                                    ),
                                 text = {
                                     Text(
                                         text = provider.displayName,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) colors.primaryAccent else colors.textPrimary,
+                                        color = if (isSelected) {
+                                            if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer
+                                        } else colors.textPrimary,
                                         fontSize = 14.sp
                                     )
                                 },
@@ -196,16 +217,17 @@ fun HavenSurfScreen(
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
-                                            tint = colors.primaryAccent,
+                                            tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
                                             modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 },
                                 onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     showProviderDropdown = false
                                     onProviderSelect(provider)
                                 },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                             )
                         }
                     }
@@ -322,21 +344,21 @@ fun HavenSurfScreen(
                             if (colors.isGlassmorphism) {
                                 Brush.verticalGradient(listOf(Color(0x2EFFFFFF), Color(0x18FFFFFF)))
                             } else {
-                                Brush.linearGradient(listOf(colors.surface, colors.surface))
+                                Brush.linearGradient(listOf(colors.surfaceContainerHigh, colors.surfaceContainerHigh))
                             }
                         )
-                        .border(
-                            1.dp,
+                        .then(
                             if (colors.isGlassmorphism) {
-                                Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF)))
-                            } else {
-                                Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder))
-                            },
-                            RoundedCornerShape(24.dp)
+                                Modifier.border(
+                                    1.dp,
+                                    Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))),
+                                    RoundedCornerShape(24.dp)
+                                )
+                            } else Modifier
                         ),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = if (colors.isGlassmorphism) Color.Transparent else colors.surface,
-                        unfocusedContainerColor = if (colors.isGlassmorphism) Color.Transparent else colors.surface,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
                         focusedTextColor = colors.textPrimary,
                         unfocusedTextColor = colors.textPrimary,
                         focusedIndicatorColor = Color.Transparent,
@@ -535,7 +557,7 @@ fun HavenSurfScreen(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 130.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
@@ -663,19 +685,23 @@ fun HavenSurfResultCard(
     onDownload: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptics = LocalHapticFeedback.current
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (colors.isGlassmorphism) Color(0x20FFFFFF) else colors.surface
+            containerColor = if (colors.isGlassmorphism) Color(0x20FFFFFF) else colors.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(0.68f)
-            .border(
-                1.dp,
-                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF)))
-                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                RoundedCornerShape(18.dp)
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF))),
+                        RoundedCornerShape(18.dp)
+                    )
+                } else Modifier
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -748,18 +774,51 @@ fun HavenSurfResultCard(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                IconButton(
-                    onClick = onDownload,
+                val dlInteractionSource = remember { MutableInteractionSource() }
+                val isDlPressed by dlInteractionSource.collectIsPressedAsState()
+                val dlCornerRadius by animateDpAsState(
+                    targetValue = if (isDlPressed) 22.dp else 14.dp,
+                    animationSpec = ExpressiveMotion.FastSpatialDp,
+                    label = "HavenSurfDlCorner"
+                )
+                val dlScale by animateFloatAsState(
+                    targetValue = if (isDlPressed) 0.88f else 1.0f,
+                    animationSpec = ExpressiveMotion.FastSpatialFloat,
+                    label = "HavenSurfDlScale"
+                )
+                val dlShape = RoundedCornerShape(dlCornerRadius.coerceAtLeast(0.dp))
+
+                Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xB3000000))
-                        .border(0.5.dp, Color(0x33FFFFFF), CircleShape)
+                        .graphicsLayer {
+                            scaleX = dlScale
+                            scaleY = dlScale
+                        }
+                        .clip(dlShape)
+                        .background(
+                            if (colors.isGlassmorphism) Color(0xB3000000)
+                            else MaterialTheme.colorScheme.secondaryContainer
+                        )
+                        .then(
+                            if (colors.isGlassmorphism) {
+                                Modifier.border(0.5.dp, Color(0x33FFFFFF), dlShape)
+                            } else Modifier
+                        )
+                        .clickable(
+                            interactionSource = dlInteractionSource,
+                            indication = ripple(bounded = true, color = colors.primaryAccent),
+                            onClick = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onDownload()
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.Download,
+                        imageVector = Icons.Default.Download,
                         contentDescription = "Download",
-                        tint = colors.primaryAccent,
+                        tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.size(17.dp)
                     )
                 }
@@ -969,19 +1028,59 @@ private fun FilterPillItem(
     modifier: Modifier = Modifier,
     indicatorColor: Color? = null
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val haptics = LocalHapticFeedback.current
+
+    val targetRadius = when {
+        isPressed -> 8.dp
+        isSelected -> 28.dp
+        else -> 12.dp
+    }
+    val cornerRadius by animateDpAsState(
+        targetValue = targetRadius,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "FilterPillCorner"
+    )
+    val safeRadius = cornerRadius.coerceAtLeast(0.dp)
+    val shape = RoundedCornerShape(safeRadius)
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "FilterPillScale"
+    )
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isSelected) colors.primaryAccent else if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface)
-            .border(
-                1.dp,
-                if (isSelected) colors.primaryAccent else if (colors.isGlassmorphism) Color(0x55FFFFFF) else colors.cardBorder,
-                RoundedCornerShape(14.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .background(
+                if (isSelected) {
+                    if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.secondaryContainer
+                } else if (colors.isGlassmorphism) Color(0x28FFFFFF)
+                else if (colors.isExpressive) colors.surfaceContainerHigh
+                else colors.surface
+            )
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(
+                        1.dp,
+                        if (isSelected) colors.primaryAccent else Color(0x55FFFFFF),
+                        shape
+                    )
+                } else Modifier // Zero border in M3 Expressive
             )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = ripple(bounded = true, color = colors.primaryAccent),
-                onClick = onClick
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onClick()
+                }
             )
             .padding(vertical = 10.dp, horizontal = 4.dp),
         contentAlignment = Alignment.Center
@@ -995,7 +1094,11 @@ private fun FilterPillItem(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(if (isSelected) colors.primaryAccentText else indicatorColor)
+                        .background(
+                            if (isSelected) {
+                                if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onSecondaryContainer
+                            } else indicatorColor
+                        )
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
@@ -1003,7 +1106,9 @@ private fun FilterPillItem(
                 text = label,
                 fontSize = 12.5.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) colors.primaryAccentText else colors.textPrimary,
+                color = if (isSelected) {
+                    if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onSecondaryContainer
+                } else colors.textPrimary,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

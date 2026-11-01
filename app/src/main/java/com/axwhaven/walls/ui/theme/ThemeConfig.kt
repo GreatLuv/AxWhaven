@@ -16,7 +16,7 @@ enum class AppThemeMode(
     EXPRESSIVE(
         "expressive",
         "Material 3 Expressive",
-        "Dynamic Pixel-style expressive tonal surfaces with electric lavender and spring motion",
+        "Dynamic Pixel-style expressive tonal surfaces with spring motion",
         listOf(Color(0xFF141218), Color(0xFF2B2930), Color(0xFFD0BCFF))
     ),
     AMOLED_BLACK(
@@ -30,6 +30,57 @@ enum class AppThemeMode(
         "Frosty Glass",
         "Translucent frosted acrylic surfaces with prismatic cyan & lavender glow",
         listOf(Color(0xFF0A0C16), Color(0x3BFFFFFF), Color(0xFF7CE8FF))
+    )
+}
+
+enum class PixelPaletteSeed(
+    val id: String,
+    val title: String,
+    val primary: Color,
+    val secondaryContainer: Color,
+    val tertiary: Color
+) {
+    SYSTEM(
+        "system",
+        "System Dynamic",
+        Color(0xFFD0BCFF),
+        Color(0xFF4F378B),
+        Color(0xFF4ED8E8)
+    ),
+    LAVENDER(
+        "lavender",
+        "Electric Lavender",
+        Color(0xFFD0BCFF),
+        Color(0xFF4F378B),
+        Color(0xFF88F2FF)
+    ),
+    GOLDEN_AMBER(
+        "golden_amber",
+        "Golden Amber",
+        Color(0xFFE6C48D),
+        Color(0xFF5B4319),
+        Color(0xFFC7DE9B)
+    ),
+    SAKURA_ROSE(
+        "sakura_rose",
+        "Sakura Rose",
+        Color(0xFFFFB1C8),
+        Color(0xFF652F42),
+        Color(0xFFFFD9B3)
+    ),
+    CYBER_CYAN(
+        "cyber_cyan",
+        "Cyber Cyan",
+        Color(0xFF80D8FF),
+        Color(0xFF004D61),
+        Color(0xFFB388FF)
+    ),
+    MONOCHROME(
+        "monochrome",
+        "Monochrome Slate",
+        Color(0xFFE2E2E6),
+        Color(0xFF45474C),
+        Color(0xFFC6C6CA)
     )
 }
 

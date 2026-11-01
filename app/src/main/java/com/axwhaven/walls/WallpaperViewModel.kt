@@ -10,6 +10,7 @@ import com.axwhaven.walls.data.WallpaperRemoteClient
 import com.axwhaven.walls.data.WallpaperStorageRepository
 import com.axwhaven.walls.model.*
 import com.axwhaven.walls.ui.theme.AppThemeMode
+import com.axwhaven.walls.ui.theme.PixelPaletteSeed
 import com.axwhaven.walls.wallpaper.WallpaperApplier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,6 +28,7 @@ data class WallpaperUiState(
     // Global Navigation & Theme
     val currentTab: PrimaryAppTab = PrimaryAppTab.HOME,
     val currentTheme: AppThemeMode = AppThemeMode.EXPRESSIVE,
+    val currentPalette: PixelPaletteSeed = PixelPaletteSeed.SYSTEM,
 
     // Home Screen State
     val homeTab: HomeNavigationTab = HomeNavigationTab.ALL_WALLPAPERS,
@@ -98,6 +100,9 @@ class WallpaperViewModel(
         val savedThemeId = prefs.getString("theme_mode", AppThemeMode.EXPRESSIVE.id)
         val loadedTheme = AppThemeMode.values().find { it.id == savedThemeId } ?: AppThemeMode.EXPRESSIVE
 
+        val savedPaletteId = prefs.getString("palette_seed", PixelPaletteSeed.SYSTEM.id)
+        val loadedPalette = PixelPaletteSeed.values().find { it.id == savedPaletteId } ?: PixelPaletteSeed.SYSTEM
+
         val savedRatingToken = prefs.getString("content_rating", ContentRating.SFW.token)
         val loadedRating = ContentRating.values().find { it.token == savedRatingToken } ?: ContentRating.SFW
 
@@ -112,6 +117,7 @@ class WallpaperViewModel(
 
         _uiState.value = _uiState.value.copy(
             currentTheme = loadedTheme,
+            currentPalette = loadedPalette,
             homeTab = loadedHomeTab,
             filterState = _uiState.value.filterState.copy(rating = loadedRating),
             appBackgroundItem = savedAppBg,
@@ -126,6 +132,11 @@ class WallpaperViewModel(
     fun selectTheme(theme: AppThemeMode) {
         prefs.edit().putString("theme_mode", theme.id).apply()
         _uiState.value = _uiState.value.copy(currentTheme = theme)
+    }
+
+    fun selectPaletteSeed(palette: PixelPaletteSeed) {
+        prefs.edit().putString("palette_seed", palette.id).apply()
+        _uiState.value = _uiState.value.copy(currentPalette = palette)
     }
 
     fun setBackgroundBlurRadius(radius: Float) {

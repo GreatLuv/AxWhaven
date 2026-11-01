@@ -29,7 +29,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -87,7 +89,11 @@ fun AxWhavenBottomNavBar(
                 )
                 .clip(RoundedCornerShape(32.dp))
                 .background(navBackgroundBrush)
-                .border(1.dp, navBorderBrush, RoundedCornerShape(32.dp))
+                .then(
+                    if (colors.isGlassmorphism) {
+                        Modifier.border(1.dp, navBorderBrush, RoundedCornerShape(32.dp))
+                    } else Modifier
+                )
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -135,13 +141,7 @@ fun AxWhavenBottomNavBar(
                                 Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x20FFFFFF))),
                                 RoundedCornerShape(26.dp)
                             )
-                        } else {
-                            Modifier.border(
-                                0.8.dp,
-                                colors.primaryAccent.copy(alpha = 0.3f),
-                                RoundedCornerShape(26.dp)
-                            )
-                        }
+                        } else Modifier
                     )
             )
 
@@ -195,6 +195,7 @@ fun NavBarItem(
     modifier: Modifier = Modifier
 ) {
     var isPressed by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
 
     val itemPressScale by animateFloatAsState(
         targetValue = if (isPressed) 0.88f else 1.0f,
@@ -245,6 +246,7 @@ fun NavBarItem(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     isPressed = true
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onClick()
                     waitForUpOrCancellation()
                     isPressed = false

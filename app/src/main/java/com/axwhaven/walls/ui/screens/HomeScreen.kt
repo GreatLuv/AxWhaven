@@ -54,12 +54,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,13 +95,14 @@ fun HomeScreen(
 ) {
     var showDieDialog by remember { mutableStateOf(false) }
 
+    val haptics = LocalHapticFeedback.current
     val collectionsGridState = rememberLazyGridState()
     val allWallpapersGridState = rememberLazyGridState()
 
-    // Bottom clearance: 110.dp + WindowInsets.navigationBars
+    // Bottom clearance: 130.dp to completely clear floating nav bar
     val density = LocalDensity.current
     val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomClearance = 110.dp + navBottomInset
+    val bottomClearance = 130.dp
 
     // Scroll Direction Vanish (10.dp threshold + anti-feedback loop settle)
     val scrollThresholdPx = remember(density) { with(density) { 10.dp.toPx() } }
@@ -362,12 +365,19 @@ fun HomeScreen(
                             )
                         }
 
-                        // Right side: Total Arts Count Pill Badge
+                        // Right side: Total Arts Count Pill Badge (Dynamic Material You tokens in Expressive & AMOLED)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(colors.mintPillBg)
-                                .border(1.dp, colors.mintPillBorder, RoundedCornerShape(20.dp))
+                                .background(
+                                    if (colors.isGlassmorphism) colors.mintPillBg
+                                    else MaterialTheme.colorScheme.tertiaryContainer
+                                )
+                                .then(
+                                    if (colors.isGlassmorphism) {
+                                        Modifier.border(1.dp, colors.mintPillBorder, RoundedCornerShape(20.dp))
+                                    } else Modifier
+                                )
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -375,12 +385,15 @@ fun HomeScreen(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(colors.mintText)
+                                        .background(
+                                            if (colors.isGlassmorphism) colors.mintText
+                                            else MaterialTheme.colorScheme.primary
+                                        )
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "${uiState.totalArtsCount} arts",
-                                    color = colors.mintText,
+                                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onTertiaryContainer,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -403,14 +416,14 @@ fun HomeScreen(
                                 Brush.linearGradient(listOf(colors.surface, colors.surface))
                             }
                         )
-                        .border(
-                            1.dp,
+                        .then(
                             if (colors.isGlassmorphism) {
-                                Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
-                            } else {
-                                Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder))
-                            },
-                            RoundedCornerShape(24.dp)
+                                Modifier.border(
+                                    1.dp,
+                                    Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF))),
+                                    RoundedCornerShape(24.dp)
+                                )
+                            } else Modifier
                         )
                         .padding(4.dp),
                     contentAlignment = Alignment.CenterStart
@@ -491,6 +504,7 @@ fun HomeScreen(
                                         val down = awaitFirstDown(requireUnconsumed = false)
                                         val press = PressInteraction.Press(down.position)
                                         allWallpapersInteractionSource.tryEmit(press)
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         onTabSelect(HomeNavigationTab.ALL_WALLPAPERS)
                                         val up = waitForUpOrCancellation()
                                         if (up != null) {
@@ -534,6 +548,7 @@ fun HomeScreen(
                                         val down = awaitFirstDown(requireUnconsumed = false)
                                         val press = PressInteraction.Press(down.position)
                                         collectionsInteractionSource.tryEmit(press)
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         onTabSelect(HomeNavigationTab.COLLECTIONS)
                                         val up = waitForUpOrCancellation()
                                         if (up != null) {
@@ -754,6 +769,7 @@ fun StandaloneDiceButton(
     var cumulativeRotation by remember { mutableFloatStateOf(0f) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     val coroutineScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
 
     val rotation by animateFloatAsState(
         targetValue = cumulativeRotation,
@@ -819,7 +835,11 @@ fun StandaloneDiceButton(
             )
             .clip(dieShape)
             .background(containerBg)
-            .border(1.dp, borderBrush, dieShape)
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(1.dp, borderBrush, dieShape)
+                } else Modifier
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -833,6 +853,7 @@ fun StandaloneDiceButton(
                 val now = System.currentTimeMillis()
                 if (now - lastTapTime > 300L) {
                     lastTapTime = now
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onClick()
                 }
             },
@@ -893,12 +914,14 @@ fun CollectionArtCard(
                 scaleX = cardScale
                 scaleY = cardScale
             }
-            .border(
-                if (colors.isExpressive) 0.5.dp else 1.dp,
-                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
-                else if (colors.isExpressive) Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.25f), colors.cardBorder.copy(alpha = 0.25f)))
-                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                shape
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF))),
+                        shape
+                    )
+                } else Modifier
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -1022,12 +1045,14 @@ fun CleanWallpaperCard(
                 scaleX = cardScale
                 scaleY = cardScale
             }
-            .border(
-                if (colors.isExpressive) 0.5.dp else 1.dp,
-                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF)))
-                else if (colors.isExpressive) Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.25f), colors.cardBorder.copy(alpha = 0.25f)))
-                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                shape
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF))),
+                        shape
+                    )
+                } else Modifier
             )
             .clickable(
                 interactionSource = interactionSource,
