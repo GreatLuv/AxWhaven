@@ -1,6 +1,9 @@
 package com.axwhaven.walls.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -563,9 +566,15 @@ fun HavenSurfScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(uiState.remoteResults, key = { it.id }) { item ->
+                            val isDownloading = uiState.downloadingItemIds.contains(item.id)
+                            val isDownloaded = uiState.downloadedItemIds.contains(item.id) ||
+                                    uiState.allLocalWallpapers.any { it.id == item.id || (it.title.isNotBlank() && it.title == item.title) }
+
                             HavenSurfResultCard(
                                 item = item,
                                 colors = colors,
+                                isDownloading = isDownloading,
+                                isDownloaded = isDownloaded,
                                 onClick = { onWallpaperPreview(item) },
                                 onDownload = { downloadQualityTargetItem = item }
                             )
@@ -681,6 +690,8 @@ fun HavenSurfScreen(
 fun HavenSurfResultCard(
     item: WallpaperItem,
     colors: AxWhavenColors,
+    isDownloading: Boolean = false,
+    isDownloaded: Boolean = false,
     onClick: () -> Unit,
     onDownload: () -> Unit,
     modifier: Modifier = Modifier
@@ -776,51 +787,114 @@ fun HavenSurfResultCard(
 
                 val dlInteractionSource = remember { MutableInteractionSource() }
                 val isDlPressed by dlInteractionSource.collectIsPressedAsState()
+
+                val targetRadius = when {
+                    isDownloaded -> 22.dp
+                    isDownloading -> 22.dp
+                    isDlPressed -> 22.dp
+                    else -> 14.dp
+                }
                 val dlCornerRadius by animateDpAsState(
-                    targetValue = if (isDlPressed) 22.dp else 14.dp,
+                    targetValue = targetRadius,
                     animationSpec = ExpressiveMotion.FastSpatialDp,
                     label = "HavenSurfDlCorner"
                 )
-                val dlScale by animateFloatAsState(
-                    targetValue = if (isDlPressed) 0.88f else 1.0f,
-                    animationSpec = ExpressiveMotion.FastSpatialFloat,
-                    label = "HavenSurfDlScale"
-                )
                 val dlShape = RoundedCornerShape(dlCornerRadius.coerceAtLeast(0.dp))
+
+                val checkPopAnimatable = remember { Animatable(1.0f) }
+                LaunchedEffect(isDownloaded) {
+                    if (isDownloaded) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        checkPopAnimatable.snapTo(1.22f)
+                        checkPopAnimatable.animateTo(
+                            targetValue = 1.0f,
+                            animationSpec = ExpressiveMotion.FastSpatialFloat
+                        )
+                    }
+                }
+
+                val pressScale by animateFloatAsState(
+                    targetValue = if (isDlPressed && !isDownloading) 0.88f else 1.0f,
+                    animationSpec = ExpressiveMotion.FastSpatialFloat,
+                    label = "HavenSurfDlPressScale"
+                )
+                val currentScale = pressScale * checkPopAnimatable.value
+
+                val targetContainerColor = when {
+                    isDownloaded -> if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary
+                    isDownloading -> if (colors.isGlassmorphism) Color(0x60FFFFFF) else MaterialTheme.colorScheme.primaryContainer
+                    else -> if (colors.isGlassmorphism) Color(0xB3000000) else MaterialTheme.colorScheme.secondaryContainer
+                }
+                val containerColor by animateColorAsState(
+                    targetValue = targetContainerColor,
+                    animationSpec = ExpressiveMotion.FastEffectsColor,
+                    label = "HavenSurfDlColor"
+                )
 
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .graphicsLayer {
-                            scaleX = dlScale
-                            scaleY = dlScale
+                            scaleX = currentScale
+                            scaleY = currentScale
                         }
                         .clip(dlShape)
-                        .background(
-                            if (colors.isGlassmorphism) Color(0xB3000000)
-                            else MaterialTheme.colorScheme.secondaryContainer
-                        )
+                        .background(containerColor)
                         .then(
                             if (colors.isGlassmorphism) {
                                 Modifier.border(0.5.dp, Color(0x33FFFFFF), dlShape)
                             } else Modifier
                         )
                         .clickable(
+                            enabled = !isDownloading,
                             interactionSource = dlInteractionSource,
                             indication = ripple(bounded = true, color = colors.primaryAccent),
                             onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onDownload()
+                                if (isDownloaded) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onDownload()
+                                } else {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onDownload()
+                                }
                             }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "Download",
-                        tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    Crossfade(
+                        targetState = when {
+                            isDownloaded -> 2
+                            isDownloading -> 1
+                            else -> 0
+                        },
+                        label = "HavenSurfDlContent"
+                    ) { state ->
+                        when (state) {
+                            1 -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.2.dp,
+                                    color = if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            2 -> {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Downloaded",
+                                    tint = if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            else -> {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Download",
+                                    tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

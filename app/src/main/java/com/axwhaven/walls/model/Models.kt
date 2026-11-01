@@ -92,7 +92,7 @@ data class ArtDirectory(
     val items: List<WallpaperItem>,
     val isDownloadedFolder: Boolean = false
 ) {
-    val totalArtsText: String get() = "${items.size} arts"
+    val totalArtsText: String get() = if (items.size == 1) "1 art" else "${items.size} arts"
     val coverItem: WallpaperItem? get() = items.firstOrNull()
 }
 

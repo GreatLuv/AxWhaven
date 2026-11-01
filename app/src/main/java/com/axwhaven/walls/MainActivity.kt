@@ -410,7 +410,6 @@ class MainActivity : ComponentActivity() {
                             onClose = { activePreviewItem = null },
                             onApply = { mode, target ->
                                 vm.applyWallpaper(item, mode, target)
-                                activePreviewItem = null
                             },
                             onLaunchSystemPicker = { activity, targetItem ->
                                 vm.launchSystemPicker(activity, targetItem)
@@ -418,7 +417,6 @@ class MainActivity : ComponentActivity() {
                             },
                             onSetAppBackground = { targetItem ->
                                 vm.setAppBackgroundWallpaper(targetItem)
-                                activePreviewItem = null
                             }
                         )
                     }

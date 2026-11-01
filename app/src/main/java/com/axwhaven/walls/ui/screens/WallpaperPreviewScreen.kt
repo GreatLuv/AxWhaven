@@ -2,15 +2,19 @@ package com.axwhaven.walls.ui.screens
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FitScreen
@@ -40,11 +45,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -54,7 +62,11 @@ import com.axwhaven.walls.model.WallpaperItem
 import com.axwhaven.walls.model.WallpaperTarget
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
+import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.LocalAxWhavenColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun WallpaperPreviewScreen(
@@ -91,7 +103,24 @@ fun WallpaperPreviewScreen(
                     onClick = { isControlsVisible = !isControlsVisible }
                 )
         ) {
-            Crossfade(targetState = selectedScale, label = "CanvasScaleTransition") { scale ->
+            AnimatedContent(
+                targetState = selectedScale,
+                transitionSpec = {
+                    (fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) +
+                            scaleIn(
+                                initialScale = if (targetState == ScaleMode.FILL) 0.88f else 1.12f,
+                                animationSpec = ExpressiveMotion.DefaultSpatialFloat
+                            )
+                    ).togetherWith(
+                        fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat) +
+                                scaleOut(
+                                    targetScale = if (targetState == ScaleMode.FILL) 1.12f else 0.88f,
+                                    animationSpec = ExpressiveMotion.DefaultSpatialFloat
+                                )
+                    )
+                },
+                label = "CanvasScaleTransition"
+            ) { scale ->
                 WallpaperImage(
                     source = item.source,
                     contentDescription = item.title,
@@ -116,13 +145,16 @@ fun WallpaperPreviewScreen(
                     .statusBarsPadding()
                     .padding(top = 12.dp, start = 16.dp, end = 16.dp)
             ) {
-                // Glassmorphic Close Button (✕)
+                // Glassmorphic / Tonal Close Button (✕)
+                val closeBtnBg = if (colors.isGlassmorphism) Color(0x8A141722) else MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f)
+                val closeBtnBorder = if (colors.isGlassmorphism) Modifier.border(1.dp, Color(0x33FFFFFF), CircleShape) else Modifier
+
                 Box(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(CircleShape)
-                        .background(Color(0x8A141722))
-                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        .background(closeBtnBg)
+                        .then(closeBtnBorder)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = ripple(bounded = true, color = Color.White),
@@ -133,51 +165,65 @@ fun WallpaperPreviewScreen(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = Color.White,
+                        tint = if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(19.dp)
                     )
                 }
 
-                // Title & Subtitle Stack
-                Column(
+                // Title & Subtitle Stack wrapped in subtle tonal pill
+                val headerPillBg = if (colors.isGlassmorphism) {
+                    Color(0x7A141722)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f)
+                }
+                val headerPillBorder = if (colors.isGlassmorphism) {
+                    Modifier.border(0.8.dp, Color(0x33FFFFFF), RoundedCornerShape(20.dp))
+                } else {
+                    Modifier
+                }
+
+                Box(
                     modifier = Modifier
-                        .padding(start = 14.dp)
+                        .padding(start = 12.dp)
                         .weight(1f)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(headerPillBg)
+                        .then(headerPillBorder)
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
                 ) {
-                    Text(
-                        text = item.directoryName.ifBlank { item.title.ifBlank { "Artwork" } },
-                        style = TextStyle(
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            shadow = Shadow(
-                                color = Color(0xCC000000),
-                                blurRadius = 8f
-                            )
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 2.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(colors.mintText)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                    Column {
                         Text(
-                            text = if (item.width > 0 && item.height > 0) "${item.width}x${item.height} • Preview" else "Anime Wallpaper Preview",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFFD1D5DB),
+                            text = item.directoryName.ifBlank { item.title.ifBlank { "Artwork" } },
                             style = TextStyle(
-                                shadow = Shadow(color = Color(0xCC000000), blurRadius = 6f)
-                            )
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.onSurface,
+                                shadow = if (colors.isGlassmorphism) Shadow(color = Color(0xCC000000), blurRadius = 8f) else null
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (item.width > 0 && item.height > 0) "${item.width}x${item.height} • Preview" else "Anime Wallpaper Preview",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (colors.isGlassmorphism) Color(0xFFD1D5DB) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = TextStyle(
+                                    shadow = if (colors.isGlassmorphism) Shadow(color = Color(0xCC000000), blurRadius = 6f) else null
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -190,6 +236,8 @@ fun WallpaperPreviewScreen(
             exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
+            val haptics = LocalHapticFeedback.current
+
             val dockBackgroundBrush = if (colors.isGlassmorphism) {
                 Brush.verticalGradient(
                     listOf(
@@ -198,18 +246,22 @@ fun WallpaperPreviewScreen(
                     )
                 )
             } else {
-                Brush.linearGradient(listOf(colors.surfaceElevated.copy(alpha = 0.94f), colors.surfaceElevated.copy(alpha = 0.94f)))
-            }
-
-            val dockBorderBrush = if (colors.isGlassmorphism) {
-                Brush.verticalGradient(
+                Brush.linearGradient(
                     listOf(
-                        Color(0x8CFFFFFF), // Crisp light highlight on top rim
-                        Color(0x28FFFFFF)  // Subtle bottom glass bevel
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f)
                     )
                 )
+            }
+
+            val dockBorderModifier = if (colors.isGlassmorphism) {
+                Modifier.border(
+                    1.dp,
+                    Brush.verticalGradient(listOf(Color(0x8CFFFFFF), Color(0x28FFFFFF))),
+                    RoundedCornerShape(28.dp)
+                )
             } else {
-                Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder))
+                Modifier
             }
 
             Box(
@@ -220,127 +272,157 @@ fun WallpaperPreviewScreen(
                     .shadow(
                         elevation = if (colors.isGlassmorphism) 20.dp else 16.dp,
                         shape = RoundedCornerShape(28.dp),
-                        spotColor = colors.primaryAccent.copy(alpha = 0.3f)
+                        spotColor = if (colors.isGlassmorphism) colors.primaryAccent.copy(alpha = 0.3f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
                     )
                     .clip(RoundedCornerShape(28.dp))
                     .background(dockBackgroundBrush)
-                    .border(1.dp, dockBorderBrush, RoundedCornerShape(28.dp))
+                    .then(dockBorderModifier)
                     .padding(16.dp)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Segmented Scale Switch ("Fill Screen" | "Fit Entire")
-                    val switchBgBrush = if (colors.isGlassmorphism) {
-                        Brush.verticalGradient(listOf(Color(0x28FFFFFF), Color(0x12FFFFFF)))
+                    val isFill = selectedScale == ScaleMode.FILL
+
+                    val switchBgModifier = if (colors.isGlassmorphism) {
+                        Modifier
+                            .background(Brush.verticalGradient(listOf(Color(0x28FFFFFF), Color(0x12FFFFFF))))
+                            .border(1.dp, Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x20FFFFFF))), RoundedCornerShape(23.dp))
                     } else {
-                        Brush.linearGradient(listOf(colors.surface, colors.surface))
-                    }
-                    val switchBorderBrush = if (colors.isGlassmorphism) {
-                        Brush.verticalGradient(listOf(Color(0x66FFFFFF), Color(0x20FFFFFF)))
-                    } else {
-                        Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder))
+                        Modifier
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f))
                     }
 
-                    Row(
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(46.dp)
                             .clip(RoundedCornerShape(23.dp))
-                            .background(switchBgBrush)
-                            .border(1.dp, switchBorderBrush, RoundedCornerShape(23.dp))
-                            .padding(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .then(switchBgModifier)
+                            .padding(4.dp)
                     ) {
-                        val isFill = selectedScale == ScaleMode.FILL
-
-                        val fillBg by animateColorAsState(
-                            targetValue = if (isFill) colors.primaryAccent else Color.Transparent,
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label = "FillBg"
-                        )
-                        val fitBg by animateColorAsState(
-                            targetValue = if (!isFill) colors.primaryAccent else Color.Transparent,
-                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label = "FitBg"
-                        )
-                        val fillTextColor by animateColorAsState(
-                            targetValue = if (isFill) colors.primaryAccentText else colors.textSecondary,
-                            label = "FillText"
-                        )
-                        val fitTextColor by animateColorAsState(
-                            targetValue = if (!isFill) colors.primaryAccentText else colors.textSecondary,
-                            label = "FitText"
+                        val pillWidth = maxWidth / 2
+                        val animatedOffsetFraction by animateFloatAsState(
+                            targetValue = if (isFill) 0f else 1f,
+                            animationSpec = ExpressiveMotion.FastSpatialFloat,
+                            label = "SegmentedPillOffset"
                         )
 
-                        // "Fill Screen" Segment
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(fillBg)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true, color = colors.primaryAccent),
-                                    onClick = { selectedScale = ScaleMode.FILL }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Crop,
-                                    contentDescription = null,
-                                    tint = fillTextColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Fill Screen",
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isFill) FontWeight.Bold else FontWeight.Medium,
-                                    color = fillTextColor
-                                )
-                            }
+                        // Liquid Sliding Indicator Pill
+                        val pillBackground = if (colors.isGlassmorphism) {
+                            colors.primaryAccent
+                        } else {
+                            MaterialTheme.colorScheme.primary
                         }
 
-                        // "Fit Entire" Segment
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .width(pillWidth)
                                 .fillMaxHeight()
+                                .offset {
+                                    IntOffset(
+                                        x = (animatedOffsetFraction * pillWidth.toPx()).roundToInt(),
+                                        y = 0
+                                    )
+                                }
                                 .clip(RoundedCornerShape(19.dp))
-                                .background(fitBg)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(bounded = true, color = colors.primaryAccent),
-                                    onClick = { selectedScale = ScaleMode.FIT }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.FitScreen,
-                                    contentDescription = null,
-                                    tint = fitTextColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Fit Entire",
-                                    fontSize = 13.sp,
-                                    fontWeight = if (!isFill) FontWeight.Bold else FontWeight.Medium,
-                                    color = fitTextColor
-                                )
+                                .background(pillBackground)
+                        )
+
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            // "Fill Screen" Segment
+                            val fillTextColor = if (isFill) {
+                                if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                if (colors.isGlassmorphism) colors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(19.dp))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            if (selectedScale != ScaleMode.FILL) {
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedScale = ScaleMode.FILL
+                                            }
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Crop,
+                                        contentDescription = null,
+                                        tint = fillTextColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Fill Screen",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isFill) FontWeight.Bold else FontWeight.Medium,
+                                        color = fillTextColor
+                                    )
+                                }
+                            }
+
+                            // "Fit Entire" Segment
+                            val fitTextColor = if (!isFill) {
+                                if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                if (colors.isGlassmorphism) colors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(19.dp))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            if (selectedScale != ScaleMode.FIT) {
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                selectedScale = ScaleMode.FIT
+                                            }
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.FitScreen,
+                                        contentDescription = null,
+                                        tint = fitTextColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Fit Entire",
+                                        fontSize = 13.sp,
+                                        fontWeight = if (!isFill) FontWeight.Bold else FontWeight.Medium,
+                                        color = fitTextColor
+                                    )
+                                }
                             }
                         }
                     }
 
                     // Primary "Set Wallpaper" CTA Button
                     Button(
-                        onClick = { showTargetModal = true },
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showTargetModal = true
+                        },
                         shape = RoundedCornerShape(18.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.primaryAccent,
-                            contentColor = colors.primaryAccentText
+                            containerColor = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
+                            contentColor = if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -351,7 +433,7 @@ fun WallpaperPreviewScreen(
                             Icon(
                                 imageVector = Icons.Default.Wallpaper,
                                 contentDescription = null,
-                                tint = colors.primaryAccentText,
+                                tint = if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -359,7 +441,7 @@ fun WallpaperPreviewScreen(
                                 text = "Set Wallpaper",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = colors.primaryAccentText
+                                color = if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onPrimary
                             )
                         }
                     }
@@ -372,20 +454,20 @@ fun WallpaperPreviewScreen(
             TargetSelectionModalDialog(
                 colors = colors,
                 onDismiss = { showTargetModal = false },
+                onClose = onClose,
                 onSelectTarget = { target ->
-                    showTargetModal = false
                     onApply(selectedScale, target)
                 },
                 onSelectSystemCropper = {
-                    showTargetModal = false
                     if (activity != null) {
                         onLaunchSystemPicker(activity, item)
                     }
                 },
-                onSelectAppBackground = {
-                    showTargetModal = false
-                    onSetAppBackground?.invoke(item)
-                }
+                onSelectAppBackground = if (onSetAppBackground != null) {
+                    {
+                        onSetAppBackground.invoke(item)
+                    }
+                } else null
             )
         }
     }
@@ -395,16 +477,44 @@ fun WallpaperPreviewScreen(
 fun TargetSelectionModalDialog(
     colors: AxWhavenColors,
     onDismiss: () -> Unit,
+    onClose: () -> Unit,
     onSelectTarget: (WallpaperTarget) -> Unit,
     onSelectSystemCropper: () -> Unit,
     onSelectAppBackground: (() -> Unit)? = null
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    var applyingOptionId by remember { mutableStateOf<String?>(null) }
+    var completedOptionId by remember { mutableStateOf<String?>(null) }
+    val anyActive = applyingOptionId != null || completedOptionId != null
+
+    val totalItems = if (onSelectAppBackground != null) 5 else 4
+
+    val handleOptionClick: (String, () -> Unit) -> Unit = { id, action ->
+        if (!anyActive) {
+            applyingOptionId = id
+            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            coroutineScope.launch {
+                action()
+                delay(650)
+                completedOptionId = id
+                applyingOptionId = null
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                delay(550)
+                onDismiss()
+                onClose()
+            }
+        }
+    }
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!anyActive) onDismiss()
+        },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
+            dismissOnBackPress = !anyActive,
+            dismissOnClickOutside = !anyActive
         )
     ) {
         Box(
@@ -414,7 +524,9 @@ fun TargetSelectionModalDialog(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss
+                    onClick = {
+                        if (!anyActive) onDismiss()
+                    }
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -428,7 +540,7 @@ fun TargetSelectionModalDialog(
                     )
                 )
             } else {
-                Modifier.background(colors.surfaceElevated)
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
             }
 
             val dialogBorderModifier = if (colors.isGlassmorphism) {
@@ -438,7 +550,7 @@ fun TargetSelectionModalDialog(
                     RoundedCornerShape(28.dp)
                 )
             } else {
-                Modifier.border(1.dp, colors.cardBorder, RoundedCornerShape(28.dp))
+                Modifier
             }
 
             Card(
@@ -465,71 +577,129 @@ fun TargetSelectionModalDialog(
                         text = "Set Wallpaper",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary
+                        color = if (colors.isGlassmorphism) colors.textPrimary else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Choose where to apply this artwork",
                         fontSize = 13.sp,
-                        color = colors.textSecondary,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 16.dp)
+                        color = if (colors.isGlassmorphism) colors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
                     )
 
-                    // Target Option Cards
-                    TargetOptionCard(
-                        icon = Icons.Default.Home,
-                        iconTint = colors.primaryAccent,
-                        title = "Home Screen",
-                        subtitle = "Set as launcher background",
-                        colors = colors,
-                        onClick = { onSelectTarget(WallpaperTarget.HOME) }
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    TargetOptionCard(
-                        icon = Icons.Default.Lock,
-                        iconTint = colors.mintText,
-                        title = "Lock Screen",
-                        subtitle = "Set as device lock screen",
-                        colors = colors,
-                        onClick = { onSelectTarget(WallpaperTarget.LOCK) }
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    TargetOptionCard(
-                        icon = Icons.Default.Layers,
-                        iconTint = Color(0xFFF59E0B),
-                        title = "Both Screens",
-                        subtitle = "Apply to Home and Lock screens",
-                        colors = colors,
-                        onClick = { onSelectTarget(WallpaperTarget.BOTH) }
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    TargetOptionCard(
-                        icon = Icons.AutoMirrored.Filled.OpenInNew,
-                        iconTint = colors.textMuted,
-                        title = "System Wallpaper Cropper",
-                        subtitle = "Open with gallery or default cropper",
-                        colors = colors,
-                        onClick = onSelectSystemCropper
-                    )
-
-                    if (onSelectAppBackground != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        TargetOptionCard(
-                            icon = Icons.Default.Palette,
-                            iconTint = colors.secondaryAccent,
-                            title = "Set as App Background",
-                            subtitle = "Use this artwork as the app's internal backdrop",
+                    // Android 17 Segmented Card Group (3.dp spacing, dynamic corner morphing)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        // 0: HOME
+                        SegmentedTargetOptionRow(
+                            index = 0,
+                            totalItems = totalItems,
+                            icon = Icons.Default.Home,
+                            iconContainerColor = if (colors.isGlassmorphism) colors.surfaceElevated else MaterialTheme.colorScheme.primaryContainer,
+                            iconTint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
+                            title = "Home Screen",
+                            subtitle = "Set as launcher background",
+                            completedSubtitle = "Applied to Home screen!",
+                            isApplying = applyingOptionId == "HOME",
+                            isCompleted = completedOptionId == "HOME",
+                            anyActive = anyActive,
                             colors = colors,
-                            onClick = onSelectAppBackground
+                            onClick = {
+                                handleOptionClick("HOME") {
+                                    onSelectTarget(WallpaperTarget.HOME)
+                                }
+                            }
                         )
+
+                        // 1: LOCK
+                        SegmentedTargetOptionRow(
+                            index = 1,
+                            totalItems = totalItems,
+                            icon = Icons.Default.Lock,
+                            iconContainerColor = if (colors.isGlassmorphism) colors.surfaceElevated else MaterialTheme.colorScheme.secondaryContainer,
+                            iconTint = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.secondary,
+                            title = "Lock Screen",
+                            subtitle = "Set as device lock screen",
+                            completedSubtitle = "Applied to Lock screen!",
+                            isApplying = applyingOptionId == "LOCK",
+                            isCompleted = completedOptionId == "LOCK",
+                            anyActive = anyActive,
+                            colors = colors,
+                            onClick = {
+                                handleOptionClick("LOCK") {
+                                    onSelectTarget(WallpaperTarget.LOCK)
+                                }
+                            }
+                        )
+
+                        // 2: BOTH
+                        SegmentedTargetOptionRow(
+                            index = 2,
+                            totalItems = totalItems,
+                            icon = Icons.Default.Layers,
+                            iconContainerColor = if (colors.isGlassmorphism) colors.surfaceElevated else MaterialTheme.colorScheme.tertiaryContainer,
+                            iconTint = if (colors.isGlassmorphism) Color(0xFFF59E0B) else MaterialTheme.colorScheme.tertiary,
+                            title = "Both Screens",
+                            subtitle = "Apply to Home and Lock screens",
+                            completedSubtitle = "Applied to both screens!",
+                            isApplying = applyingOptionId == "BOTH",
+                            isCompleted = completedOptionId == "BOTH",
+                            anyActive = anyActive,
+                            colors = colors,
+                            onClick = {
+                                handleOptionClick("BOTH") {
+                                    onSelectTarget(WallpaperTarget.BOTH)
+                                }
+                            }
+                        )
+
+                        // 3: CROPPER
+                        SegmentedTargetOptionRow(
+                            index = 3,
+                            totalItems = totalItems,
+                            icon = Icons.AutoMirrored.Filled.OpenInNew,
+                            iconContainerColor = if (colors.isGlassmorphism) colors.surfaceElevated else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            iconTint = if (colors.isGlassmorphism) colors.textMuted else MaterialTheme.colorScheme.onSurfaceVariant,
+                            title = "System Wallpaper Cropper",
+                            subtitle = "Open with gallery or default cropper",
+                            completedSubtitle = "Opening cropper...",
+                            isApplying = applyingOptionId == "CROPPER",
+                            isCompleted = completedOptionId == "CROPPER",
+                            anyActive = anyActive,
+                            colors = colors,
+                            onClick = {
+                                handleOptionClick("CROPPER") {
+                                    onSelectSystemCropper()
+                                }
+                            }
+                        )
+
+                        // 4: APP BACKGROUND (Optional)
+                        if (onSelectAppBackground != null) {
+                            SegmentedTargetOptionRow(
+                                index = 4,
+                                totalItems = totalItems,
+                                icon = Icons.Default.Palette,
+                                iconContainerColor = if (colors.isGlassmorphism) colors.surfaceElevated else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                iconTint = if (colors.isGlassmorphism) colors.secondaryAccent else MaterialTheme.colorScheme.primary,
+                                title = "Set as App Background",
+                                subtitle = "Use this artwork as the app's internal backdrop",
+                                completedSubtitle = "Set as backdrop!",
+                                isApplying = applyingOptionId == "APP_BG",
+                                isCompleted = completedOptionId == "APP_BG",
+                                anyActive = anyActive,
+                                colors = colors,
+                                onClick = {
+                                    handleOptionClick("APP_BG") {
+                                        onSelectAppBackground()
+                                    }
+                                }
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Modal Footer
                     Row(
@@ -538,13 +708,14 @@ fun TargetSelectionModalDialog(
                     ) {
                         TextButton(
                             onClick = onDismiss,
+                            enabled = !anyActive,
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = "Cancel",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = colors.textSecondary
+                                color = if (colors.isGlassmorphism) colors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -555,41 +726,92 @@ fun TargetSelectionModalDialog(
 }
 
 @Composable
-fun TargetOptionCard(
+private fun SegmentedTargetOptionRow(
+    index: Int,
+    totalItems: Int,
     icon: ImageVector,
+    iconContainerColor: Color,
     iconTint: Color,
     title: String,
     subtitle: String,
+    completedSubtitle: String,
+    isApplying: Boolean,
+    isCompleted: Boolean,
+    anyActive: Boolean,
     colors: AxWhavenColors,
     onClick: () -> Unit
 ) {
-    val cardBg = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface
-    val cardBorder = if (colors.isGlassmorphism) Color(0x4DFFFFFF) else colors.cardBorder
+    val isSelected = isApplying || isCompleted
+    val isTop = index == 0
+    val isBottom = index == totalItems - 1
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
+    val animatedTopStart by animateDpAsState(
+        targetValue = if (isSelected) 20.dp else if (isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "TopStart"
+    )
+    val animatedTopEnd by animateDpAsState(
+        targetValue = if (isSelected) 20.dp else if (isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "TopEnd"
+    )
+    val animatedBottomEnd by animateDpAsState(
+        targetValue = if (isSelected) 20.dp else if (isBottom) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "BottomEnd"
+    )
+    val animatedBottomStart by animateDpAsState(
+        targetValue = if (isSelected) 20.dp else if (isBottom) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "BottomStart"
+    )
+
+    val currentShape = RoundedCornerShape(
+        topStart = animatedTopStart.coerceAtLeast(0.dp),
+        topEnd = animatedTopEnd.coerceAtLeast(0.dp),
+        bottomEnd = animatedBottomEnd.coerceAtLeast(0.dp),
+        bottomStart = animatedBottomStart.coerceAtLeast(0.dp)
+    )
+
+    val rowBg by animateColorAsState(
+        targetValue = when {
+            isSelected -> if (colors.isGlassmorphism) Color(0x40FFFFFF) else MaterialTheme.colorScheme.secondaryContainer
+            else -> if (colors.isGlassmorphism) Color(0x28FFFFFF) else MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = ExpressiveMotion.DefaultEffectsColor,
+        label = "RowBg"
+    )
+
+    val rowBorder = if (colors.isGlassmorphism) {
+        Modifier.border(1.dp, Color(0x4DFFFFFF), currentShape)
+    } else {
+        Modifier
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+            .clip(currentShape)
+            .background(rowBg)
+            .then(rowBorder)
             .clickable(
+                enabled = !anyActive,
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true, color = colors.primaryAccent),
+                indication = ripple(bounded = true, color = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary),
                 onClick = onClick
             )
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left Icon Badge Container
+            // Squircle Icon Badge Box
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surfaceElevated),
+                    .background(iconContainerColor),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -600,7 +822,7 @@ fun TargetOptionCard(
                 )
             }
 
-            // Text Stack
+            // Title & Subtitle
             Column(
                 modifier = Modifier
                     .padding(start = 14.dp)
@@ -610,22 +832,71 @@ fun TargetOptionCard(
                     text = title,
                     fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
+                    color = when {
+                        isSelected -> if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.onSecondaryContainer
+                        else -> if (colors.isGlassmorphism) colors.textPrimary else MaterialTheme.colorScheme.onSurface
+                    }
                 )
                 Text(
-                    text = subtitle,
+                    text = if (isCompleted) completedSubtitle else subtitle,
                     fontSize = 12.sp,
-                    color = colors.textSecondary,
+                    color = when {
+                        isCompleted -> if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.primary
+                        isSelected -> if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                        else -> if (colors.isGlassmorphism) colors.textSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     modifier = Modifier.padding(top = 1.dp)
                 )
             }
 
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = colors.textMuted,
-                modifier = Modifier.size(16.dp)
-            )
+            // Right Action Indicator (Arrow -> Spinner -> Spring Checkmark)
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AnimatedContent(
+                    targetState = when {
+                        isCompleted -> 2
+                        isApplying -> 1
+                        else -> 0
+                    },
+                    transitionSpec = {
+                        if (targetState == 2) {
+                            scaleIn(
+                                initialScale = 0.5f,
+                                animationSpec = ExpressiveMotion.FastSpatialFloat
+                            ) + fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) togetherWith
+                                    fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
+                        } else {
+                            (fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) +
+                                    scaleIn(initialScale = 0.8f, animationSpec = ExpressiveMotion.DefaultSpatialFloat)) togetherWith
+                                    (fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat) +
+                                            scaleOut(targetScale = 0.8f, animationSpec = ExpressiveMotion.DefaultSpatialFloat))
+                        }
+                    },
+                    label = "RowIndicator"
+                ) { state ->
+                    when (state) {
+                        2 -> Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Applied",
+                            tint = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        1 -> CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.2.dp,
+                            color = if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.primary
+                        )
+                        else -> Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = if (colors.isGlassmorphism) colors.textMuted else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }

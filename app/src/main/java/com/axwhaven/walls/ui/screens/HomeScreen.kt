@@ -365,13 +365,13 @@ fun HomeScreen(
                             )
                         }
 
-                        // Right side: Total Arts Count Pill Badge (Dynamic Material You tokens in Expressive & AMOLED)
+                        // Right side: Total Arts Count Pill Badge (secondaryContainer fill + primary dot)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(
                                     if (colors.isGlassmorphism) colors.mintPillBg
-                                    else MaterialTheme.colorScheme.tertiaryContainer
+                                    else MaterialTheme.colorScheme.secondaryContainer
                                 )
                                 .then(
                                     if (colors.isGlassmorphism) {
@@ -392,8 +392,8 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "${uiState.totalArtsCount} arts",
-                                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    text = if (uiState.totalArtsCount == 1) "1 art" else "${uiState.totalArtsCount} arts",
+                                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onSecondaryContainer,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -900,6 +900,12 @@ fun CollectionArtCard(
         label = "ColCardCorner"
     )
 
+    val arrowOffset by animateDpAsState(
+        targetValue = if (isPressed) 3.dp else 0.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "ExploreArrowNudge"
+    )
+
     val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
 
     Card(
@@ -990,19 +996,64 @@ fun CollectionArtCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    GlassmorphicBadge(
-                        text = directory.totalArtsText,
-                        colors = colors
-                    )
+                    // Per-collection art count squircle badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (colors.isGlassmorphism) Color(0x35FFFFFF)
+                                else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f)
+                            )
+                            .then(
+                                if (colors.isGlassmorphism) {
+                                    Modifier.border(0.8.dp, Color(0x4DFFFFFF), RoundedCornerShape(10.dp))
+                                } else Modifier
+                            )
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = directory.totalArtsText,
+                            color = if (colors.isGlassmorphism) Color(0xFFE2E8F0) else MaterialTheme.colorScheme.primary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.2.sp
+                        )
+                    }
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    Text(
-                        text = "Explore →",
-                        color = colors.secondaryAccent,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    // Compact tonal pill chip with nudging arrow
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (colors.isGlassmorphism) colors.primaryAccent.copy(alpha = 0.30f)
+                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                            )
+                            .then(
+                                if (colors.isGlassmorphism) {
+                                    Modifier.border(0.8.dp, colors.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(50))
+                                } else Modifier
+                            )
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Explore",
+                                color = if (colors.isGlassmorphism) colors.secondaryAccent else MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "→",
+                                color = if (colors.isGlassmorphism) colors.secondaryAccent else MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.offset(x = arrowOffset)
+                            )
+                        }
+                    }
                 }
             }
         }

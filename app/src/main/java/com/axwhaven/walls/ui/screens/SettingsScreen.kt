@@ -286,12 +286,14 @@ fun SettingsScreen(
                                 color = colors.textSecondary,
                                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 1.dp, bottom = 10.dp)
                             )
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                items(PixelPaletteSeed.values()) { seed ->
+                                PixelPaletteSeed.values().forEach { seed ->
                                     PixelPaletteSwatch(
                                         seed = seed,
                                         isSelected = uiState.currentPalette == seed,
@@ -1242,7 +1244,7 @@ private fun PixelPaletteSwatch(
     val context = LocalContext.current
 
     val cornerRadius by animateDpAsState(
-        targetValue = if (isSelected) 14.dp else 24.dp,
+        targetValue = if (isSelected) 12.dp else 20.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "SwatchCornerRadius_${seed.name}"
     )
@@ -1255,7 +1257,7 @@ private fun PixelPaletteSwatch(
     )
 
     val outerCornerRadius by animateDpAsState(
-        targetValue = if (isSelected) 18.dp else 28.dp,
+        targetValue = if (isSelected) 15.dp else 23.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "SwatchOuterCorner_${seed.name}"
     )
@@ -1276,7 +1278,7 @@ private fun PixelPaletteSwatch(
 
     Box(
         modifier = Modifier
-            .size(54.dp)
+            .size(44.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -1285,9 +1287,9 @@ private fun PixelPaletteSwatch(
                 if (isSelected) {
                     Modifier
                         .border(2.dp, MaterialTheme.colorScheme.primary, outerBorderShape)
-                        .padding(3.dp)
+                        .padding(2.5.dp)
                 } else {
-                    Modifier.padding(3.dp)
+                    Modifier.padding(2.5.dp)
                 }
             )
             .clip(swatchShape)
@@ -1322,7 +1324,7 @@ private fun PixelPaletteSwatch(
         if (isSelected) {
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(17.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.55f)),
                 contentAlignment = Alignment.Center
@@ -1331,7 +1333,7 @@ private fun PixelPaletteSwatch(
                     imageVector = Icons.Default.Check,
                     contentDescription = "Selected",
                     tint = Color.White,
-                    modifier = Modifier.size(13.dp)
+                    modifier = Modifier.size(11.dp)
                 )
             }
         }

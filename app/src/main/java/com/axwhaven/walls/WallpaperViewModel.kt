@@ -46,6 +46,8 @@ data class WallpaperUiState(
     val canLoadMore: Boolean = true,
     val isSearching: Boolean = false,
     val isLoadingMore: Boolean = false,
+    val downloadingItemIds: Set<String> = emptySet(),
+    val downloadedItemIds: Set<String> = emptySet(),
 
     // Global Feedback
     val statusMessage: String? = null,
@@ -444,18 +446,24 @@ class WallpaperViewModel(
 
     fun downloadItem(item: WallpaperItem, useOriginal: Boolean = false) {
         val label = if (useOriginal) "original quality" else "high quality"
-        _uiState.value = _uiState.value.copy(statusMessage = "Downloading ${item.title} ($label)...")
+        _uiState.value = _uiState.value.copy(
+            statusMessage = "Downloading ${item.title} ($label)...",
+            downloadingItemIds = _uiState.value.downloadingItemIds + item.id
+        )
         viewModelScope.launch {
             storageRepo.downloadRemoteWallpaper(item, useOriginal)
                 .onSuccess { msg ->
                     _uiState.value = _uiState.value.copy(
-                        statusMessage = msg
+                        statusMessage = msg,
+                        downloadingItemIds = _uiState.value.downloadingItemIds - item.id,
+                        downloadedItemIds = _uiState.value.downloadedItemIds + item.id
                     )
                     refreshLocalDirectories()
                 }
                 .onFailure { err ->
                     _uiState.value = _uiState.value.copy(
-                        statusMessage = "Download failed: ${err.localizedMessage}"
+                        statusMessage = "Download failed: ${err.localizedMessage}",
+                        downloadingItemIds = _uiState.value.downloadingItemIds - item.id
                     )
                 }
         }
