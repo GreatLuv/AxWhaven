@@ -167,19 +167,11 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                 ) {
-                    // Glassmorphism ambient luminous backdrops
+                    // Glassmorphism ambient luminous backdrops (radial gradients naturally soft without GPU blur passes)
                     if (colors.isGlassmorphism) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(
-                                    if (uiState.backgroundBlurRadius > 0f) {
-                                        Modifier.blur(
-                                            radius = (uiState.backgroundBlurRadius * 1.5f).dp,
-                                            edgeTreatment = BlurredEdgeTreatment.Unbounded
-                                        )
-                                    } else Modifier
-                                )
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(Color(0x408B5CF6), Color.Transparent),
@@ -191,14 +183,6 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(
-                                    if (uiState.backgroundBlurRadius > 0f) {
-                                        Modifier.blur(
-                                            radius = (uiState.backgroundBlurRadius * 1.5f).dp,
-                                            edgeTreatment = BlurredEdgeTreatment.Unbounded
-                                        )
-                                    } else Modifier
-                                )
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(Color(0x3506B6D4), Color.Transparent),
@@ -210,14 +194,6 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .then(
-                                    if (uiState.backgroundBlurRadius > 0f) {
-                                        Modifier.blur(
-                                            radius = (uiState.backgroundBlurRadius * 1.5f).dp,
-                                            edgeTreatment = BlurredEdgeTreatment.Unbounded
-                                        )
-                                    } else Modifier
-                                )
                                 .background(
                                     Brush.radialGradient(
                                         colors = listOf(Color(0x28EC4899), Color.Transparent),

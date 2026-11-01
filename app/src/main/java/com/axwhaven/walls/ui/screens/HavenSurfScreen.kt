@@ -738,7 +738,11 @@ fun HavenSurfScreen(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection)
                     ) {
-                        items(uiState.remoteResults, key = { it.id }) { item ->
+                        items(
+                            items = uiState.remoteResults,
+                            key = { it.id },
+                            contentType = { "wallpaper_surf_card" }
+                        ) { item ->
                             val isDownloading = uiState.downloadingItemIds.contains(item.id)
                             val isDownloaded = uiState.downloadedItemIds.contains(item.id) ||
                                     uiState.allLocalWallpapers.any { it.id == item.id || (it.title.isNotBlank() && it.title == item.title) }

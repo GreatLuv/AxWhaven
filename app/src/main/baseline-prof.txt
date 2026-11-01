@@ -1,0 +1,5 @@
+# Baseline Profile for AxWhaven critical cold-start and navigation journeys
+HSPLcom/axwhaven/walls/**;->*(**)**
+Lcom/axwhaven/walls/**;
+HSPLandroidx/compose/**;->*(**)**
+Landroidx/compose/**;

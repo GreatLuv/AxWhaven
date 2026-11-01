@@ -12,6 +12,7 @@ import com.axwhaven.walls.model.*
 import com.axwhaven.walls.ui.theme.AppThemeMode
 import com.axwhaven.walls.ui.theme.PixelPaletteSeed
 import com.axwhaven.walls.wallpaper.WallpaperApplier
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -132,6 +133,14 @@ class WallpaperViewModel(
 
         refreshLocalDirectories()
         _isReady.value = true
+
+        // Pre-warm initial Haven Surf discovery results in background shortly after startup to eliminate cold first-composition lag
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(600L)
+            if (_uiState.value.remoteResults.isEmpty() && !_uiState.value.isSearching) {
+                executeHavenSurfSearch(isNewSearch = true)
+            }
+        }
     }
 
     fun selectTheme(theme: AppThemeMode) {
@@ -152,9 +161,7 @@ class WallpaperViewModel(
 
     fun selectPrimaryTab(tab: PrimaryAppTab) {
         _uiState.value = _uiState.value.copy(currentTab = tab)
-        if (tab == PrimaryAppTab.HOME) {
-            refreshLocalDirectories()
-        } else if (tab == PrimaryAppTab.HAVEN_SURF) {
+        if (tab == PrimaryAppTab.HAVEN_SURF) {
             if (_uiState.value.remoteResults.isEmpty() && !_uiState.value.isSearching) {
                 executeHavenSurfSearch(isNewSearch = true)
             }

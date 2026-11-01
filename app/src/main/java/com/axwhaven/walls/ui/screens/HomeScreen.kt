@@ -303,7 +303,11 @@ fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(uiState.selectedDirectory.items, key = { it.id }) { item ->
+                        items(
+                            items = uiState.selectedDirectory.items,
+                            key = { it.id },
+                            contentType = { "wallpaper_card" }
+                        ) { item ->
                             CleanWallpaperCard(
                                 item = item,
                                 colors = colors,
@@ -738,7 +742,11 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(allItems, key = { it.id }) { item ->
+                                    items(
+                                        items = allItems,
+                                        key = { it.id },
+                                        contentType = { "wallpaper_card" }
+                                    ) { item ->
                                         CleanWallpaperCard(
                                             item = item,
                                             colors = colors,

@@ -108,10 +108,6 @@ fun AxWhavenBottomNavBar(
                 label = "NavSlidingPillOffset"
             )
 
-            // Liquid stretch derived from motion progress towards active tab (peaks ~1.08f mid-flight)
-            val motionDelta = abs(activeTabIndex.toFloat() - animatedTabIndex)
-            val liquidStretchX = (1.0f + (motionDelta * 0.12f).coerceIn(0f, 0.08f))
-
             val activePillColor = if (colors.isGlassmorphism) {
                 colors.primaryAccent.copy(alpha = 0.22f)
             } else {
@@ -130,7 +126,10 @@ fun AxWhavenBottomNavBar(
                         )
                     }
                     .graphicsLayer {
-                        scaleX = liquidStretchX
+                        // Liquid stretch derived from motion progress towards active tab (peaks ~1.08f mid-flight)
+                        // Read strictly inside graphicsLayer draw phase to prevent BoxWithConstraints recomposition
+                        val motionDelta = abs(activeTabIndex.toFloat() - animatedTabIndex)
+                        scaleX = 1.0f + (motionDelta * 0.12f).coerceIn(0f, 0.08f)
                     }
                     .padding(horizontal = 4.dp)
                     .clip(RoundedCornerShape(26.dp))
@@ -277,7 +276,7 @@ fun NavBarItem(
                 tint = animatedIconColor,
                 modifier = Modifier
                     .size(21.dp)
-                    .offset(y = iconOffsetY)
+                    .offset { IntOffset(0, iconOffsetY.roundToPx()) }
                     .graphicsLayer {
                         scaleX = iconPopAnimatable.value
                         scaleY = iconPopAnimatable.value
