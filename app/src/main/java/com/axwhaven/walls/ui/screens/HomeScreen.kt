@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -75,10 +76,12 @@ import com.axwhaven.walls.WallpaperUiState
 import com.axwhaven.walls.model.ArtDirectory
 import com.axwhaven.walls.model.WallpaperItem
 import com.axwhaven.walls.model.WallpaperTarget
+import com.axwhaven.walls.ui.components.ArtsCountHeaderBadge
 import com.axwhaven.walls.ui.components.GlassmorphicBadge
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
+import com.axwhaven.walls.ui.theme.FloatingDockClearance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -99,10 +102,10 @@ fun HomeScreen(
     val collectionsGridState = rememberLazyGridState()
     val allWallpapersGridState = rememberLazyGridState()
 
-    // Bottom clearance: 130.dp to completely clear floating nav bar
+    // Bottom clearance: FloatingDockClearance (150.dp) to completely clear floating nav bar
     val density = LocalDensity.current
     val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomClearance = 130.dp
+    val bottomClearance = FloatingDockClearance
 
     // Scroll Direction Vanish (10.dp threshold + anti-feedback loop settle)
     val scrollThresholdPx = remember(density) { with(density) { 10.dp.toPx() } }
@@ -189,18 +192,40 @@ fun HomeScreen(
                         .statusBarsPadding()
                         .padding(top = 8.dp, bottom = 12.dp)
                 ) {
-                    IconButton(
-                        onClick = { onDirectorySelect(null) },
+                    val backBtnInteractionSource = remember { MutableInteractionSource() }
+                    val isBackBtnPressed by backBtnInteractionSource.collectIsPressedAsState()
+                    val backBtnScale by animateFloatAsState(
+                        targetValue = if (isBackBtnPressed) 0.90f else 1.0f,
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
+                        label = "CollectionBackScale"
+                    )
+                    val backBtnCorner by animateDpAsState(
+                        targetValue = if (isBackBtnPressed) 24.dp else 16.dp,
+                        animationSpec = ExpressiveMotion.FastSpatialDp,
+                        label = "CollectionBackCorner"
+                    )
+                    val backBtnShape = RoundedCornerShape(backBtnCorner.coerceAtLeast(0.dp))
+                    val backBtnBg = if (colors.isGlassmorphism) Color(0x30FFFFFF) else MaterialTheme.colorScheme.surfaceContainerHigh
+                    val backBtnBorder = if (colors.isGlassmorphism) {
+                        Modifier.border(1.dp, Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF))), backBtnShape)
+                    } else Modifier
+
+                    Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .clip(CircleShape)
-                            .background(if (colors.isGlassmorphism) Color(0x30FFFFFF) else colors.surfaceElevated)
-                            .border(
-                                1.dp,
-                                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF)))
-                                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                                CircleShape
-                            )
+                            .graphicsLayer {
+                                scaleX = backBtnScale
+                                scaleY = backBtnScale
+                            }
+                            .clip(backBtnShape)
+                            .background(backBtnBg)
+                            .then(backBtnBorder)
+                            .clickable(
+                                interactionSource = backBtnInteractionSource,
+                                indication = ripple(bounded = true, color = colors.primaryAccent),
+                                onClick = { onDirectorySelect(null) }
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -225,7 +250,7 @@ fun HomeScreen(
                             color = colors.textSecondary
                         )
                     }
-                    GlassmorphicBadge(
+                    ArtsCountHeaderBadge(
                         text = uiState.selectedDirectory.totalArtsText,
                         colors = colors
                     )
@@ -366,39 +391,10 @@ fun HomeScreen(
                         }
 
                         // Right side: Total Arts Count Pill Badge (secondaryContainer fill + primary dot)
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (colors.isGlassmorphism) colors.mintPillBg
-                                    else MaterialTheme.colorScheme.secondaryContainer
-                                )
-                                .then(
-                                    if (colors.isGlassmorphism) {
-                                        Modifier.border(1.dp, colors.mintPillBorder, RoundedCornerShape(20.dp))
-                                    } else Modifier
-                                )
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (colors.isGlassmorphism) colors.mintText
-                                            else MaterialTheme.colorScheme.primary
-                                        )
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (uiState.totalArtsCount == 1) "1 art" else "${uiState.totalArtsCount} arts",
-                                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
+                        ArtsCountHeaderBadge(
+                            text = if (uiState.totalArtsCount == 1) "1 art" else "${uiState.totalArtsCount} arts",
+                            colors = colors
+                        )
                     }
                 }
 
@@ -485,6 +481,26 @@ fun HomeScreen(
                         label = "ColTabText"
                     )
 
+                    val allTabWeight by animateIntAsState(
+                        targetValue = if (isAllWallpapers) 800 else 500,
+                        label = "AllTabWeight"
+                    )
+                    val allTabScale by animateFloatAsState(
+                        targetValue = if (isAllWallpapers) 1.04f else 1.0f,
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
+                        label = "AllTabScale"
+                    )
+
+                    val colTabWeight by animateIntAsState(
+                        targetValue = if (!isAllWallpapers) 800 else 500,
+                        label = "ColTabWeight"
+                    )
+                    val colTabScale by animateFloatAsState(
+                        targetValue = if (!isAllWallpapers) 1.04f else 1.0f,
+                        animationSpec = ExpressiveMotion.FastSpatialFloat,
+                        label = "ColTabScale"
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
@@ -524,12 +540,27 @@ fun HomeScreen(
                                     modifier = Modifier.size(17.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "All Wallpapers",
-                                    fontSize = 13.5.sp,
-                                    fontWeight = if (isAllWallpapers) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = allWallpapersTextColor
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    // Reserved space for ExtraBold text prevents layout jitter and tab width reflow
+                                    Text(
+                                        text = "All Wallpapers",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.Transparent,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "All Wallpapers",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight(allTabWeight.coerceIn(1, 1000)),
+                                        color = allWallpapersTextColor,
+                                        maxLines = 1,
+                                        modifier = Modifier.graphicsLayer {
+                                            scaleX = allTabScale
+                                            scaleY = allTabScale
+                                        }
+                                    )
+                                }
                             }
                         }
 
@@ -568,12 +599,27 @@ fun HomeScreen(
                                     modifier = Modifier.size(17.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Collections",
-                                    fontSize = 13.5.sp,
-                                    fontWeight = if (!isAllWallpapers) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = collectionsTextColor
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    // Reserved space for ExtraBold text prevents layout jitter and tab width reflow
+                                    Text(
+                                        text = "Collections",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.Transparent,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "Collections",
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight(colTabWeight.coerceIn(1, 1000)),
+                                        color = collectionsTextColor,
+                                        maxLines = 1,
+                                        modifier = Modifier.graphicsLayer {
+                                            scaleX = colTabScale
+                                            scaleY = colTabScale
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -895,7 +941,7 @@ fun CollectionArtCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 26.dp else 20.dp,
+        targetValue = if (isPressed) 28.dp else 20.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "ColCardCorner"
     )
@@ -920,6 +966,7 @@ fun CollectionArtCard(
                 scaleX = cardScale
                 scaleY = cardScale
             }
+            .clip(shape)
             .then(
                 if (colors.isGlassmorphism) {
                     Modifier.border(
@@ -1077,7 +1124,7 @@ fun CleanWallpaperCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 24.dp else 18.dp,
+        targetValue = if (isPressed) 28.dp else 20.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "CardCorner"
     )
@@ -1096,6 +1143,8 @@ fun CleanWallpaperCard(
                 scaleX = cardScale
                 scaleY = cardScale
             }
+            .clip(shape)
+            .clip(shape)
             .then(
                 if (colors.isGlassmorphism) {
                     Modifier.border(
@@ -1111,7 +1160,7 @@ fun CleanWallpaperCard(
                 onClick = onClick
             )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().clip(shape)) {
             WallpaperImage(
                 source = item.source,
                 contentDescription = item.title,

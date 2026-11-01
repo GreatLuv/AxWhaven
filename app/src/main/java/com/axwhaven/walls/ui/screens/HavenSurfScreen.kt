@@ -4,12 +4,21 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,7 +30,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -32,16 +46,25 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -57,11 +80,18 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.axwhaven.walls.WallpaperUiState
 import com.axwhaven.walls.model.*
+import com.axwhaven.walls.ui.components.M3ExpressiveMorphingLoader
 import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
+import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HavenSurfScreen(
     uiState: WallpaperUiState,
@@ -88,6 +118,113 @@ fun HavenSurfScreen(
     var showProviderDropdown by remember { mutableStateOf(false) }
     var downloadQualityTargetItem by remember { mutableStateOf<WallpaperItem?>(null) }
     val haptics = LocalHapticFeedback.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+    val isImeVisible = WindowInsets.isImeVisible
+    val currentImeVisible by rememberUpdatedState(isImeVisible)
+    var isSearchFocused by remember { mutableStateOf(false) }
+    var inFlightSheetJob by remember { mutableStateOf<Job?>(null) }
+
+    // Safe Sheet Opener: prevents keyboard focus race & double-bounce
+    val openSheetSafely: (() -> Unit) -> Unit = { openAction ->
+        if (inFlightSheetJob?.isActive != true) {
+            if (isImeVisible || isSearchFocused) {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+                inFlightSheetJob = coroutineScope.launch {
+                    withTimeoutOrNull(400L) {
+                        snapshotFlow { currentImeVisible }.first { !it }
+                    }
+                    delay(50L) // settle margin
+                    openAction()
+                }
+            } else {
+                focusManager.clearFocus(force = true)
+                openAction()
+            }
+        }
+    }
+
+    // Search execution handler: fires simultaneous crisp Confirm haptic with query submission
+    var lastSearchQuery by remember { mutableStateOf<String?>(null) }
+    var lastSearchTimestamp by remember { mutableLongStateOf(0L) }
+
+    val handleExecuteSearch: () -> Unit = {
+        val currentQuery = uiState.searchQueryText.trim()
+        val now = System.currentTimeMillis()
+        if (currentQuery.isNotEmpty() && (currentQuery != lastSearchQuery || now - lastSearchTimestamp > 400L)) {
+            lastSearchQuery = currentQuery
+            lastSearchTimestamp = now
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onSubmitSearch()
+        } else if (currentQuery.isEmpty() && uiState.remoteResults.isNotEmpty()) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            onSubmitSearch()
+        }
+    }
+
+    // Scroll Direction Vanish (~10.dp threshold + settle margin)
+    val gridState = rememberLazyGridState()
+    var isScrollingDown by rememberSaveable { mutableStateOf(false) }
+    var scrollAccumulator by remember { mutableFloatStateOf(0f) }
+    var lastVisibilityChangeTime by remember { mutableLongStateOf(0L) }
+    val scrollThresholdPx = with(LocalDensity.current) { 10.dp.toPx() }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val now = System.currentTimeMillis()
+                // Anti-feedback-loop: ignore scroll deltas for ~350ms after visibility toggle
+                if (now - lastVisibilityChangeTime < 350L) {
+                    return Offset.Zero
+                }
+                // Never collapse while search is focused or IME is visible
+                if (isSearchFocused || isImeVisible) {
+                    return Offset.Zero
+                }
+
+                val delta = available.y
+                if (delta < 0) {
+                    // Scrolling down
+                    if (scrollAccumulator > 0) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator < -scrollThresholdPx && !isScrollingDown) {
+                        isScrollingDown = true
+                        lastVisibilityChangeTime = now
+                        scrollAccumulator = 0f
+                    }
+                } else if (delta > 0) {
+                    // Scrolling up
+                    if (scrollAccumulator < 0) scrollAccumulator = 0f
+                    scrollAccumulator += delta
+                    if (scrollAccumulator > scrollThresholdPx && isScrollingDown) {
+                        isScrollingDown = false
+                        lastVisibilityChangeTime = now
+                        scrollAccumulator = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Always show header when at the top of the grid
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+        }.collect { isAtTop ->
+            if (isAtTop && isScrollingDown) {
+                isScrollingDown = false
+                scrollAccumulator = 0f
+            }
+        }
+    }
+
+    val shouldShowTitleRow = !isScrollingDown || isSearchFocused || isImeVisible
 
     val activeFilterCount = (if (uiState.filterState.rating != ContentRating.SFW) 1 else 0) +
             (if (uiState.filterState.resolution != ResolutionFilter.ALL) 1 else 0) +
@@ -107,220 +244,238 @@ fun HavenSurfScreen(
                 .statusBarsPadding()
         ) {
             // =========================================================================
-            // TOP HEADER: HAVEN SURF DISCOVERY HUB & PROVIDER SELECTOR PILL
+            // TOP HEADER: HAVEN SURF DISCOVERY HUB & PROVIDER SELECTOR PILL (COLLAPSIBLE)
             // =========================================================================
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            AnimatedVisibility(
+                visible = shouldShowTitleRow,
+                enter = slideInVertically(
+                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                    initialOffsetY = { -it }
+                ) + expandVertically(
+                    animationSpec = ExpressiveMotion.DefaultSpatialIntSize,
+                    expandFrom = Alignment.Top
+                ) + fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat),
+                exit = slideOutVertically(
+                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
+                    targetOffsetY = { -it }
+                ) + shrinkVertically(
+                    animationSpec = ExpressiveMotion.DefaultSpatialIntSize,
+                    shrinkTowards = Alignment.Top
+                ) + fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "AxW Surf",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.textPrimary,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Text(
-                        text = "Online wallpaper explorer",
-                        fontSize = 12.5.sp,
-                        color = colors.textSecondary
-                    )
-                }
-
-                // Interactive Provider Selector Pill
-                Box {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(if (colors.isGlassmorphism) Color(0x2EFFFFFF) else colors.surfaceElevated)
-                            .then(
-                                if (colors.isGlassmorphism) {
-                                    Modifier.border(
-                                        1.dp,
-                                        Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))),
-                                        RoundedCornerShape(20.dp)
-                                    )
-                                } else Modifier
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true, color = colors.primaryAccent),
-                                onClick = { showProviderDropdown = true }
-                            )
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(colors.primaryAccent)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = uiState.activeProvider.displayName,
+                            text = "AxW Surf",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
                             color = colors.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
+                            letterSpacing = (-0.5).sp
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Select Provider",
-                            tint = colors.textSecondary,
-                            modifier = Modifier.size(18.dp)
+                        Text(
+                            text = "Online wallpaper explorer",
+                            fontSize = 12.5.sp,
+                            color = colors.textSecondary
                         )
                     }
 
-                    // Refined Provider Selector Dropdown Menu
-                    val menuShape = RoundedCornerShape(24.dp)
-                    val menuBorderStroke = if (colors.isGlassmorphism) {
-                        BorderStroke(1.dp, Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))))
-                    } else null
-
-                    DropdownMenu(
-                        expanded = showProviderDropdown,
-                        onDismissRequest = { showProviderDropdown = false },
-                        shape = menuShape,
-                        containerColor = if (colors.isGlassmorphism) Color(0xEB11172A) else colors.surfaceContainerHigh,
-                        border = menuBorderStroke,
-                        shadowElevation = 8.dp,
-                        modifier = Modifier
-                            .width(210.dp)
-                            .clip(menuShape)
-                    ) {
-                        ProviderSite.values().forEach { provider ->
-                            val isSelected = provider == uiState.activeProvider
-                            val itemShape = RoundedCornerShape(14.dp)
-                            DropdownMenuItem(
-                                modifier = Modifier
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    .clip(itemShape)
-                                    .background(
-                                        if (isSelected) {
-                                            if (colors.isGlassmorphism) Color(0x38FFFFFF)
-                                            else MaterialTheme.colorScheme.secondaryContainer
-                                        } else Color.Transparent
-                                    ),
-                                text = {
-                                    Text(
-                                        text = provider.displayName,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) {
-                                            if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer
-                                        } else colors.textPrimary,
-                                        fontSize = 14.sp
-                                    )
-                                },
-                                trailingIcon = {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
-                                            modifier = Modifier.size(18.dp)
+                    // Interactive Provider Selector Pill
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (colors.isGlassmorphism) Color(0x2EFFFFFF) else colors.surfaceElevated)
+                                .then(
+                                    if (colors.isGlassmorphism) {
+                                        Modifier.border(
+                                            1.dp,
+                                            Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))),
+                                            RoundedCornerShape(20.dp)
                                         )
-                                    }
-                                },
-                                onClick = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showProviderDropdown = false
-                                    onProviderSelect(provider)
-                                },
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                    } else Modifier
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple(bounded = true, color = colors.primaryAccent),
+                                    onClick = { openSheetSafely { showProviderDropdown = true } }
+                                )
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.primaryAccent)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = uiState.activeProvider.displayName,
+                                color = colors.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Select Provider",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
+
+                        // Refined Provider Selector Dropdown Menu
+                        val menuShape = RoundedCornerShape(24.dp)
+                        val menuBorderStroke = if (colors.isGlassmorphism) {
+                            BorderStroke(1.dp, Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF))))
+                        } else null
+
+                        DropdownMenu(
+                            expanded = showProviderDropdown,
+                            onDismissRequest = { showProviderDropdown = false },
+                            shape = menuShape,
+                            containerColor = if (colors.isGlassmorphism) Color(0xEB11172A) else colors.surfaceContainerHigh,
+                            border = menuBorderStroke,
+                            shadowElevation = 8.dp,
+                            modifier = Modifier
+                                .width(210.dp)
+                                .clip(menuShape)
+                        ) {
+                            ProviderSite.values().forEach { provider ->
+                                val isSelected = provider == uiState.activeProvider
+                                val itemShape = RoundedCornerShape(14.dp)
+                                DropdownMenuItem(
+                                    modifier = Modifier
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .clip(itemShape)
+                                        .background(
+                                            if (isSelected) {
+                                                if (colors.isGlassmorphism) Color(0x38FFFFFF)
+                                                else MaterialTheme.colorScheme.secondaryContainer
+                                            } else Color.Transparent
+                                        ),
+                                    text = {
+                                        Text(
+                                            text = provider.displayName,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) {
+                                                if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer
+                                            } else colors.textPrimary,
+                                            fontSize = 14.sp
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        showProviderDropdown = false
+                                        onProviderSelect(provider)
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
-                // Filter Sheet Button with Badge
-                Box {
-                    IconButton(
-                        onClick = onOpenFilterSheet,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (activeFilterCount > 0) colors.primaryAccent.copy(alpha = 0.25f)
-                                else if (colors.isGlassmorphism) Color(0x2EFFFFFF)
-                                else colors.surfaceElevated
+                    // Filter Sheet Button with Badge
+                    Box {
+                        IconButton(
+                            onClick = { openSheetSafely { onOpenFilterSheet() } },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (activeFilterCount > 0) colors.primaryAccent.copy(alpha = 0.25f)
+                                    else if (colors.isGlassmorphism) Color(0x2EFFFFFF)
+                                    else colors.surfaceElevated
+                                )
+                                .border(
+                                    1.dp,
+                                    if (activeFilterCount > 0) Brush.linearGradient(listOf(colors.primaryAccent, colors.primaryAccent))
+                                    else if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF)))
+                                    else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
+                                    CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Filters",
+                                tint = if (activeFilterCount > 0) colors.primaryAccent else colors.textPrimary,
+                                modifier = Modifier.size(19.dp)
                             )
-                            .border(
-                                1.dp,
-                                if (activeFilterCount > 0) Brush.linearGradient(listOf(colors.primaryAccent, colors.primaryAccent))
-                                else if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x75FFFFFF), Color(0x25FFFFFF)))
-                                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Filters",
-                            tint = if (activeFilterCount > 0) colors.primaryAccent else colors.textPrimary,
-                            modifier = Modifier.size(19.dp)
-                        )
+                        }
+
+                        if (activeFilterCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 2.dp, y = (-2).dp)
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.primaryAccent),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = activeFilterCount.toString(),
+                                    color = colors.primaryAccentText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
 
-                    if (activeFilterCount > 0) {
+                    val isKonachanNsfw = uiState.activeProvider == ProviderSite.KONACHAN && uiState.filterState.rating != ContentRating.SFW
+                    val isDanbooruActive = uiState.activeProvider == ProviderSite.DANBOORU
+                    if (isKonachanNsfw || isDanbooruActive) {
+                        Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 2.dp, y = (-2).dp)
-                                .size(18.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
-                                .background(colors.primaryAccent),
+                                .background(
+                                    if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated
+                                )
+                                .border(
+                                    1.dp,
+                                    Brush.linearGradient(listOf(colors.primaryAccent, colors.primaryAccent)),
+                                    CircleShape
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple(bounded = true, color = colors.primaryAccent),
+                                    onClick = if (isDanbooruActive) onOpenDanbooruCookieDialog else onOpenKonachanCookieDialog
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = activeFilterCount.toString(),
-                                color = colors.primaryAccentText,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                imageVector = Icons.Default.VpnKey,
+                                contentDescription = if (isDanbooruActive) "Danbooru Cookie" else "Konachan Cookie",
+                                tint = colors.primaryAccent,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-                    }
-                }
-
-                val isKonachanNsfw = uiState.activeProvider == ProviderSite.KONACHAN && uiState.filterState.rating != ContentRating.SFW
-                val isDanbooruActive = uiState.activeProvider == ProviderSite.DANBOORU
-                if (isKonachanNsfw || isDanbooruActive) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated
-                            )
-                            .border(
-                                1.dp,
-                                Brush.linearGradient(listOf(colors.primaryAccent, colors.primaryAccent)),
-                                CircleShape
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(bounded = true, color = colors.primaryAccent),
-                                onClick = if (isDanbooruActive) onOpenDanbooruCookieDialog else onOpenKonachanCookieDialog
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VpnKey,
-                            contentDescription = if (isDanbooruActive) "Danbooru Cookie" else "Konachan Cookie",
-                            tint = colors.primaryAccent,
-                            modifier = Modifier.size(18.dp)
-                        )
                     }
                 }
             }
 
             // =========================================================================
-            // REFINED SEARCH BAR WITH KEYBOARD SEARCH ACTION
+            // PINNED SEARCH BAR WITH TACTILE HAPTICS ON SEARCH EXECUTION
             // =========================================================================
             Box(
                 modifier = Modifier
@@ -339,9 +494,10 @@ fun HavenSurfScreen(
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { onSubmitSearch() }),
+                    keyboardActions = KeyboardActions(onSearch = { handleExecuteSearch() }),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onFocusChanged { isSearchFocused = it.isFocused }
                         .clip(RoundedCornerShape(24.dp))
                         .background(
                             if (colors.isGlassmorphism) {
@@ -392,7 +548,7 @@ fun HavenSurfScreen(
                                 }
                             }
                             IconButton(
-                                onClick = onSubmitSearch,
+                                onClick = handleExecuteSearch,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
@@ -455,17 +611,28 @@ fun HavenSurfScreen(
                 if (uiState.isSearching) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(
-                                color = colors.primaryAccent,
-                                strokeWidth = 3.dp,
-                                modifier = Modifier.size(40.dp)
+                            M3ExpressiveMorphingLoader(
+                                loaderSize = 56.dp,
+                                colors = colors
                             )
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            // Gentle pulsing alpha using tween (explicit exception to no-tween rule per spec for infiniteRepeatable)
+                            val infinitePulse = rememberInfiniteTransition(label = "SearchPulsingTransition")
+                            val pulseAlpha by infinitePulse.animateFloat(
+                                initialValue = 0.55f,
+                                targetValue = 1.0f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween<Float>(durationMillis = 1000, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "SearchPulseAlpha"
+                            )
                             Text(
                                 text = "Searching ${uiState.activeProvider.displayName}...",
-                                color = colors.textSecondary,
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Medium
+                                color = (if (colors.isGlassmorphism) colors.textPrimary else MaterialTheme.colorScheme.onSurface).copy(alpha = pulseAlpha),
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge
                             )
                         }
                     }
@@ -560,10 +727,13 @@ fun HavenSurfScreen(
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 130.dp),
+                        state = gridState,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingDockClearance),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(nestedScrollConnection)
                     ) {
                         items(uiState.remoteResults, key = { it.id }) { item ->
                             val isDownloading = uiState.downloadingItemIds.contains(item.id)
@@ -589,10 +759,9 @@ fun HavenSurfScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (uiState.isLoadingMore) {
-                                    CircularProgressIndicator(
-                                        color = colors.primaryAccent,
-                                        strokeWidth = 3.dp,
-                                        modifier = Modifier.size(32.dp)
+                                    M3ExpressiveMorphingLoader(
+                                        loaderSize = 36.dp,
+                                        colors = colors
                                     )
                                 } else if (uiState.canLoadMore) {
                                     Button(
@@ -627,6 +796,33 @@ fun HavenSurfScreen(
                 }
             }
         }
+
+        // Status Bar Scrim Overlay (pinned at the very top of the screen)
+        val statusBarScrim = if (colors.isGlassmorphism) {
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xD9090C19),
+                    Color(0x99090C19),
+                    Color.Transparent
+                )
+            )
+        } else {
+            Brush.verticalGradient(
+                listOf(
+                    colors.background,
+                    colors.background.copy(alpha = 0.92f),
+                    Color.Transparent
+                )
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(statusBarScrim)
+                .align(Alignment.TopCenter)
+        )
 
         // =========================================================================
         // ADVANCED FILTER MODAL SHEET
@@ -697,30 +893,52 @@ fun HavenSurfResultCard(
     modifier: Modifier = Modifier
 ) {
     val haptics = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "HavenSurfCardScale"
+    )
+
+    val cardCornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 28.dp else 20.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "HavenSurfCardCorner"
+    )
+
+    val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
+
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = shape,
         colors = CardDefaults.cardColors(
             containerColor = if (colors.isGlassmorphism) Color(0x20FFFFFF) else colors.surfaceContainerLow
         ),
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(0.68f)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .clip(shape)
             .then(
                 if (colors.isGlassmorphism) {
                     Modifier.border(
                         1.dp,
                         Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF))),
-                        RoundedCornerShape(18.dp)
+                        shape
                     )
                 } else Modifier
             )
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = ripple(bounded = true, color = colors.primaryAccent),
                 onClick = onClick
             )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().clip(shape)) {
             WallpaperImage(
                 source = item.source,
                 contentDescription = item.title,
@@ -915,6 +1133,7 @@ fun HavenSurfFilterModalSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = { WindowInsets.navigationBars },
         containerColor = if (colors.isGlassmorphism) Color(0xF2101526) else colors.surfaceElevated,
         dragHandle = { BottomSheetDefaults.DragHandle(color = if (colors.isGlassmorphism) Color(0x60FFFFFF) else colors.cardBorder) }
     ) {
@@ -1540,25 +1759,33 @@ fun DownloadQualityDialog(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
-                    // Option 1: Original Resolution
+                    // Option 1: Original Resolution (Top Card of Segmented Group)
                     DownloadOptionCard(
+                        isTop = true,
                         title = "Original Resolution",
                         subtitle = "Full uncompressed quality as uploaded (PNG/Original)",
                         badge = "Pristine",
-                        badgeColor = colors.primaryAccent,
+                        badgeBgColor = if (colors.isGlassmorphism) colors.primaryAccent.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primaryContainer,
+                        badgeTextColor = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
+                        iconBoxBgColor = if (colors.isGlassmorphism) colors.primaryAccent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer,
+                        iconTint = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
                         icon = Icons.Default.HighQuality,
                         colors = colors,
                         onClick = onDownloadOriginal
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
 
-                    // Option 2: High-Quality JPEG
+                    // Option 2: High-Quality JPEG (Bottom Card of Segmented Group)
                     DownloadOptionCard(
+                        isTop = false,
                         title = "High-Quality JPEG",
                         subtitle = "Fast download, optimized file size with full visual fidelity",
                         badge = "Fast",
-                        badgeColor = Color(0xFF10B981),
+                        badgeBgColor = if (colors.isGlassmorphism) Color(0x3010B981) else MaterialTheme.colorScheme.tertiaryContainer,
+                        badgeTextColor = if (colors.isGlassmorphism) Color(0xFF10B981) else MaterialTheme.colorScheme.onTertiaryContainer,
+                        iconBoxBgColor = if (colors.isGlassmorphism) Color(0x2810B981) else MaterialTheme.colorScheme.tertiaryContainer,
+                        iconTint = if (colors.isGlassmorphism) Color(0xFF10B981) else MaterialTheme.colorScheme.onTertiaryContainer,
                         icon = Icons.Default.Speed,
                         colors = colors,
                         onClick = onDownloadCompressed
@@ -1571,28 +1798,75 @@ fun DownloadQualityDialog(
 
 @Composable
 private fun DownloadOptionCard(
+    isTop: Boolean,
     title: String,
     subtitle: String,
     badge: String,
-    badgeColor: Color,
+    badgeBgColor: Color,
+    badgeTextColor: Color,
+    iconBoxBgColor: Color,
+    iconTint: Color,
     icon: ImageVector,
     colors: AxWhavenColors,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val animatedTopStart by animateDpAsState(
+        targetValue = if (isPressed) 18.dp else if (isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "DownloadTopStart"
+    )
+    val animatedTopEnd by animateDpAsState(
+        targetValue = if (isPressed) 18.dp else if (isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "DownloadTopEnd"
+    )
+    val animatedBottomStart by animateDpAsState(
+        targetValue = if (isPressed) 18.dp else if (!isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "DownloadBottomStart"
+    )
+    val animatedBottomEnd by animateDpAsState(
+        targetValue = if (isPressed) 18.dp else if (!isTop) 20.dp else 6.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "DownloadBottomEnd"
+    )
+
+    val currentShape = RoundedCornerShape(
+        topStart = animatedTopStart.coerceAtLeast(0.dp),
+        topEnd = animatedTopEnd.coerceAtLeast(0.dp),
+        bottomEnd = animatedBottomEnd.coerceAtLeast(0.dp),
+        bottomStart = animatedBottomStart.coerceAtLeast(0.dp)
+    )
+
+    val cardBg by animateColorAsState(
+        targetValue = when {
+            isPressed -> if (colors.isGlassmorphism) Color(0x40FFFFFF) else MaterialTheme.colorScheme.secondaryContainer
+            else -> if (colors.isGlassmorphism) Color(0x28FFFFFF) else MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = ExpressiveMotion.FastEffectsColor,
+        label = "DownloadCardBg"
+    )
+
+    val cardBorder = if (colors.isGlassmorphism) {
+        Modifier.border(
+            1.dp,
+            Brush.verticalGradient(listOf(Color(0x44FFFFFF), Color(0x18FFFFFF))),
+            currentShape
+        )
+    } else Modifier
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surface)
-            .border(
-                1.dp,
-                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x44FFFFFF), Color(0x18FFFFFF)))
-                else Brush.linearGradient(listOf(colors.cardBorder, colors.cardBorder)),
-                RoundedCornerShape(16.dp)
-            )
+            .clip(currentShape)
+            .background(cardBg)
+            .then(cardBorder)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true, color = colors.primaryAccent),
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true, color = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary),
                 onClick = onClick
             )
             .padding(14.dp),
@@ -1600,15 +1874,15 @@ private fun DownloadOptionCard(
     ) {
         Box(
             modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(badgeColor.copy(alpha = 0.15f)),
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(iconBoxBgColor),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = badgeColor,
+                tint = iconTint,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -1619,20 +1893,20 @@ private fun DownloadOptionCard(
                     text = title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = colors.textPrimary
+                    color = if (isPressed && !colors.isGlassmorphism) MaterialTheme.colorScheme.onSecondaryContainer else colors.textPrimary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(badgeColor.copy(alpha = 0.2f))
+                        .background(badgeBgColor)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
                         text = badge,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = badgeColor
+                        color = badgeTextColor
                     )
                 }
             }
@@ -1640,7 +1914,7 @@ private fun DownloadOptionCard(
             Text(
                 text = subtitle,
                 fontSize = 11.5.sp,
-                color = colors.textSecondary,
+                color = if (isPressed && !colors.isGlassmorphism) MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.82f) else colors.textSecondary,
                 lineHeight = 15.sp
             )
         }

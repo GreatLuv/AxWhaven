@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -234,6 +235,17 @@ fun NavBarItem(
         label = "NavTextColor"
     )
 
+    val animatedTextWeight by animateIntAsState(
+        targetValue = if (isSelected) 800 else 500,
+        label = "NavTextWeight"
+    )
+
+    val animatedTextScale by animateFloatAsState(
+        targetValue = if (isSelected) 1.04f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "NavTextScale"
+    )
+
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -272,13 +284,27 @@ fun NavBarItem(
                     }
             )
             Spacer(modifier = Modifier.height(3.dp))
-            Text(
-                text = label,
-                fontSize = 11.5.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                color = animatedTextColor,
-                maxLines = 1
-            )
+            Box(contentAlignment = Alignment.Center) {
+                // Reserved layout width for ExtraBold text guarantees tabs never shift/reflow
+                Text(
+                    text = label,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.Transparent,
+                    maxLines = 1
+                )
+                Text(
+                    text = label,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight(animatedTextWeight.coerceIn(1, 1000)),
+                    color = animatedTextColor,
+                    maxLines = 1,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = animatedTextScale
+                        scaleY = animatedTextScale
+                    }
+                )
+            }
         }
     }
 }

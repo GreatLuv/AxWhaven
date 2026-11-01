@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,9 +47,12 @@ import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AppThemeMode
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
+import com.axwhaven.walls.ui.theme.FloatingDockClearance
 import com.axwhaven.walls.ui.theme.PixelPaletteSeed
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     uiState: WallpaperUiState,
@@ -328,6 +332,33 @@ fun SettingsScreen(
                     modifier = Modifier.outerCardStyle()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        val sliderInteractionSource = remember { MutableInteractionSource() }
+                        val isSliderDragged by sliderInteractionSource.collectIsDraggedAsState()
+                        val isSliderPressed by sliderInteractionSource.collectIsPressedAsState()
+                        val isInteracting = isSliderDragged || isSliderPressed
+                        var lastTickValue by remember { mutableIntStateOf(uiState.backgroundBlurRadius.roundToInt()) }
+                        var localBlurRadius by remember(uiState.backgroundBlurRadius) { mutableFloatStateOf(uiState.backgroundBlurRadius) }
+
+                        val badgeScale by animateFloatAsState(
+                            targetValue = if (isInteracting) 1.10f else 1.0f,
+                            animationSpec = ExpressiveMotion.FastSpatialFloat,
+                            label = "BlurBadgeScale"
+                        )
+                        val badgeCorner by animateDpAsState(
+                            targetValue = if (isInteracting) 16.dp else 12.dp,
+                            animationSpec = ExpressiveMotion.FastSpatialDp,
+                            label = "BlurBadgeCorner"
+                        )
+                        val badgeShape = RoundedCornerShape(badgeCorner.coerceAtLeast(0.dp))
+                        val badgeBg = if (colors.isGlassmorphism) {
+                            colors.primaryAccent.copy(alpha = if (isInteracting) 0.32f else 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        }
+                        val badgeBorder = if (colors.isGlassmorphism) {
+                            Modifier.border(1.dp, colors.primaryAccent.copy(alpha = 0.4f), badgeShape)
+                        } else Modifier
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
@@ -361,35 +392,76 @@ fun SettingsScreen(
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
-                            // Active blur badge
+
+                            // Active blur badge (scale-pop 1.0f -> 1.10f, secondaryContainer fill, zero border in M3 Expressive)
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(colors.primaryAccent.copy(alpha = 0.18f))
-                                    .border(1.dp, colors.primaryAccent.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                    .graphicsLayer {
+                                        scaleX = badgeScale
+                                        scaleY = badgeScale
+                                    }
+                                    .clip(badgeShape)
+                                    .background(badgeBg)
+                                    .then(badgeBorder)
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    text = if (uiState.backgroundBlurRadius <= 0f) "Off (0dp)" else "${uiState.backgroundBlurRadius.toInt()} dp",
+                                    text = if (localBlurRadius <= 0f) "Off (0dp)" else "${localBlurRadius.roundToInt()} dp",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = colors.primaryAccent
+                                    color = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Interactive Blur Slider
+                        // Interactive Blur Slider with Expressive physics
+                        val thumbHeight by animateDpAsState(
+                            targetValue = if (isInteracting) 38.dp else 32.dp,
+                            animationSpec = ExpressiveMotion.FastSpatialDp,
+                            label = "BlurThumbHeight"
+                        )
+                        val thumbWidth by animateDpAsState(
+                            targetValue = if (isInteracting) 6.dp else 4.dp,
+                            animationSpec = ExpressiveMotion.FastSpatialDp,
+                            label = "BlurThumbWidth"
+                        )
+
                         Slider(
-                            value = uiState.backgroundBlurRadius,
-                            onValueChange = onBlurRadiusChange,
+                            value = localBlurRadius,
+                            onValueChange = { newVal ->
+                                localBlurRadius = newVal
+                                val intVal = newVal.roundToInt()
+                                if (isInteracting && intVal != lastTickValue) {
+                                    lastTickValue = intVal
+                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                                }
+                                onBlurRadiusChange(newVal)
+                            },
+                            onValueChangeFinished = {
+                                onBlurRadiusChange(localBlurRadius)
+                            },
+                            interactionSource = sliderInteractionSource,
                             valueRange = 0f..60f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = colors.primaryAccent,
-                                activeTrackColor = colors.primaryAccent,
-                                inactiveTrackColor = if (colors.isGlassmorphism) Color(0x38FFFFFF) else colors.cardBorder
-                            ),
+                            thumb = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = thumbWidth, height = thumbHeight)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary)
+                                )
+                            },
+                            track = { sliderState ->
+                                SliderDefaults.Track(
+                                    sliderState = sliderState,
+                                    colors = SliderDefaults.colors(
+                                        thumbColor = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor = if (colors.isGlassmorphism) Color(0x38FFFFFF) else MaterialTheme.colorScheme.surfaceContainerHighest
+                                    )
+                                )
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -407,12 +479,17 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             presets.forEach { (presetVal, presetLabel) ->
-                                val isSelected = abs(uiState.backgroundBlurRadius - presetVal) < 2f
+                                val isSelected = abs(localBlurRadius - presetVal) < 2f
                                 ExpressiveFilterChip(
                                     selected = isSelected,
                                     label = presetLabel,
                                     colors = colors,
-                                    onClick = { onBlurRadiusChange(presetVal) },
+                                    onClick = {
+                                        localBlurRadius = presetVal
+                                        lastTickValue = presetVal.roundToInt()
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onBlurRadiusChange(presetVal)
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -823,7 +900,7 @@ fun SettingsScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(130.dp))
+                Spacer(modifier = Modifier.height(FloatingDockClearance))
             }
         }
 

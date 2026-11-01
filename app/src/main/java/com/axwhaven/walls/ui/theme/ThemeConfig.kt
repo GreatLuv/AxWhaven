@@ -2,6 +2,15 @@ package com.axwhaven.walls.ui.theme
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+/**
+ * Shared clearance value for all scrollable content (All Wallpapers, Collections, AxW Surf, Settings)
+ * to ensure the bottom row/footer is fully visible above the persistent floating bottom dock in both
+ * gesture navigation and 3-button navigation layouts.
+ */
+val FloatingDockClearance: Dp = 150.dp
 
 val LocalAxWhavenColors = staticCompositionLocalOf<AxWhavenColors> {
     getThemeColors(AppThemeMode.EXPRESSIVE)
