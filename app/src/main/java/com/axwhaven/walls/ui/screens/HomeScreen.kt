@@ -725,20 +725,6 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    if (uiState.directories.isNotEmpty()) {
-                                        item(
-                                            span = { GridItemSpan(2) },
-                                            key = "collections_overview_banner",
-                                            contentType = "collections_overview"
-                                        ) {
-                                            CollectionsOverviewBanner(
-                                                totalCollections = uiState.directories.size,
-                                                totalArts = uiState.totalArtsCount,
-                                                colors = colors
-                                            )
-                                        }
-                                    }
-
                                     items(
                                         items = uiState.directories,
                                         key = { it.id },
@@ -785,10 +771,8 @@ fun HomeScreen(
                                         ) {
                                             FeaturedSpotlightCarousel(
                                                 items = spotlightWallpapers,
-                                                totalArtsCount = uiState.totalArtsCount,
                                                 colors = colors,
-                                                onWallpaperClick = { item -> onWallpaperPreview(item) },
-                                                onRollDieClick = { showDieDialog = true }
+                                                onWallpaperClick = { item -> onWallpaperPreview(item) }
                                             )
                                         }
                                     }
@@ -986,25 +970,23 @@ fun StandaloneDiceButton(
 @Composable
 fun FeaturedSpotlightCarousel(
     items: List<WallpaperItem>,
-    totalArtsCount: Int,
     colors: AxWhavenColors,
     onWallpaperClick: (WallpaperItem) -> Unit,
-    onRollDieClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (items.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = { items.size })
 
-    // Auto-advance every 5.5s when user is not manually scrolling
+    // Auto-advance every 5.0s when user is not manually scrolling
     LaunchedEffect(pagerState) {
         while (true) {
-            delay(5500L)
+            delay(5000L)
             if (!pagerState.isScrollInProgress && items.size > 1) {
                 val next = (pagerState.currentPage + 1) % items.size
                 pagerState.animateScrollToPage(
                     page = next,
-                    animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
+                    animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing)
                 )
             }
         }
@@ -1018,36 +1000,35 @@ fun FeaturedSpotlightCarousel(
     ) {
         HorizontalPager(
             state = pagerState,
-            contentPadding = PaddingValues(horizontal = 24.dp),
-            pageSpacing = 14.dp,
+            contentPadding = PaddingValues(horizontal = 28.dp),
+            pageSpacing = 16.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(350.dp)
+                .height(360.dp)
         ) { page ->
             val item = items[page]
-            val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
-            val cardScale = lerp(
-                start = 0.92f,
-                stop = 1.0f,
-                fraction = 1f - pageOffset.coerceIn(0f, 1f)
-            )
-            val cardAlpha = lerp(
-                start = 0.70f,
-                stop = 1.0f,
-                fraction = 1f - pageOffset.coerceIn(0f, 1f)
-            )
+            val rawOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+            val pageOffset = rawOffset.absoluteValue.coerceIn(0f, 1f)
+
+            // Dynamic 3D depth, scale, alpha, and inner parallax
+            val cardScale = lerp(0.90f, 1.0f, 1f - pageOffset)
+            val cardAlpha = lerp(0.65f, 1.0f, 1f - pageOffset)
+            val cardRotationY = (rawOffset.coerceIn(-1f, 1f)) * -12f
+            val cardElevation = (4f + 18f * (1f - pageOffset)).dp
 
             FeaturedSpotlightItemCard(
                 item = item,
                 colors = colors,
                 cardScale = cardScale,
                 cardAlpha = cardAlpha,
-                onClick = { onWallpaperClick(item) },
-                onRollDieClick = onRollDieClick
+                cardRotationY = cardRotationY,
+                cardElevation = cardElevation,
+                rawOffset = rawOffset,
+                onClick = { onWallpaperClick(item) }
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Dynamic Pill Page Indicators
         if (items.size > 1) {
@@ -1059,12 +1040,12 @@ fun FeaturedSpotlightCarousel(
                 repeat(items.size) { index ->
                     val isSelected = pagerState.currentPage == index
                     val pillWidth by animateDpAsState(
-                        targetValue = if (isSelected) 22.dp else 7.dp,
+                        targetValue = if (isSelected) 24.dp else 7.dp,
                         animationSpec = ExpressiveMotion.FastSpatialDp,
                         label = "SpotlightPillWidth"
                     )
                     val pillAlpha by animateFloatAsState(
-                        targetValue = if (isSelected) 1.0f else 0.35f,
+                        targetValue = if (isSelected) 1.0f else 0.30f,
                         animationSpec = ExpressiveMotion.FastEffectsFloat,
                         label = "SpotlightPillAlpha"
                     )
@@ -1089,8 +1070,10 @@ private fun FeaturedSpotlightItemCard(
     colors: AxWhavenColors,
     cardScale: Float,
     cardAlpha: Float,
-    onClick: () -> Unit,
-    onRollDieClick: () -> Unit
+    cardRotationY: Float,
+    cardElevation: androidx.compose.ui.unit.Dp,
+    rawOffset: Float,
+    onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -1103,274 +1086,152 @@ private fun FeaturedSpotlightItemCard(
 
     val shape = RoundedCornerShape(26.dp)
 
-    Card(
-        shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surfaceContainerLow
-        ),
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
+                cameraDistance = 14f * density
+                rotationY = cardRotationY
                 scaleX = cardScale * pressScale
                 scaleY = cardScale * pressScale
                 alpha = cardAlpha
             }
-            .clip(shape)
-            .then(
-                if (colors.isGlassmorphism) {
-                    Modifier.border(
-                        1.dp,
-                        Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x20FFFFFF))),
-                        shape
-                    )
-                } else {
-                    Modifier.border(
-                        1.dp,
-                        colors.cardBorder.copy(alpha = 0.45f),
-                        shape
-                    )
-                }
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(bounded = true, color = colors.primaryAccent),
-                onClick = onClick
-            )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Full Portrait Wallpaper Image, scaled and aligned to showcase character art
-            WallpaperImage(
-                source = item.source,
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
-                modifier = Modifier.fillMaxSize()
-            )
+        // Dynamic soft ambient glow shadow behind the active card
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 4.dp)
+                .shadow(
+                    elevation = cardElevation,
+                    shape = shape,
+                    spotColor = colors.primaryAccent.copy(alpha = if (colors.isGlassmorphism) 0.38f else 0.25f),
+                    ambientColor = colors.primaryAccent.copy(alpha = 0.16f)
+                )
+        )
 
-            // Multi-stop cinematic dark gradient overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color(0x40000000),
-                                0.35f to Color.Transparent,
-                                0.65f to Color(0x8805070E),
-                                1.0f to Color(0xF205070E)
-                            )
+        Card(
+            shape = shape,
+            colors = CardDefaults.cardColors(
+                containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surfaceContainerLow
+            ),
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(shape)
+                .then(
+                    if (colors.isGlassmorphism) {
+                        Modifier.border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x20FFFFFF))),
+                            shape
                         )
-                    )
-            )
-
-            // Top-left: Glassmorphic Spotlight Chip
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(14.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (colors.isGlassmorphism) Color(0x600B0E1E)
-                        else Color(0xB8000000)
-                    )
-                    .border(
-                        0.8.dp,
-                        if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
-                        RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(colors.primaryAccent)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "SPOTLIGHT",
-                        color = Color.White,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp
-                    )
-                }
-            }
-
-            // Top-right: Quick Random Die Surprise Chip
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (colors.isGlassmorphism) colors.surpriseIconBg.copy(alpha = 0.85f)
-                        else colors.primaryAccent.copy(alpha = 0.22f)
-                    )
-                    .border(
-                        0.8.dp,
-                        if (colors.isGlassmorphism) Color(0x70FFFFFF) else colors.primaryAccent.copy(alpha = 0.45f),
-                        RoundedCornerShape(16.dp)
-                    )
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = ripple(bounded = true, color = colors.primaryAccent),
-                        onClick = onRollDieClick
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Casino,
-                        contentDescription = "Surprise Me",
-                        tint = colors.primaryAccent,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "Surprise",
-                        color = Color.White,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Bottom-left: Title, Collection Tag & Tap Hint
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                if (item.directoryName.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.primaryAccent.copy(alpha = 0.28f))
-                            .border(0.6.dp, colors.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = item.directoryName,
-                            color = colors.primaryAccent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+                    } else {
+                        Modifier.border(
+                            1.dp,
+                            colors.cardBorder.copy(alpha = 0.45f),
+                            shape
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = ripple(bounded = true, color = colors.primaryAccent),
+                    onClick = onClick
+                )
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Parallax-shifted Full Portrait Wallpaper Image, top-center aligned for anime artwork
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = rawOffset * 32.dp.toPx()
+                        }
+                ) {
+                    WallpaperImage(
+                        source = item.source,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        alignment = Alignment.TopCenter,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
 
-                Text(
-                    text = item.title.ifBlank { item.directoryName.ifBlank { "Curated Haven" } },
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                // Minimal soft vignette overlay so the spotlight badge pops cleanly
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to Color(0x35000000),
+                                    0.25f to Color.Transparent,
+                                    0.80f to Color.Transparent,
+                                    1.0f to Color(0x40000000)
+                                )
+                            )
+                        )
                 )
-                Spacer(modifier = Modifier.height(3.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Tap to preview & apply",
-                        color = Color(0xCCFFFFFF),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                // Top-left: Minimal Glassmorphic Spotlight Chip
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(14.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (colors.isGlassmorphism) Color(0x600B0E1E)
+                            else Color(0xB8000000)
+                        )
+                        .border(
+                            0.8.dp,
+                            if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(colors.primaryAccent)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "SPOTLIGHT",
+                            color = Color.White,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                // Bottom-right: Minimalist Tap-to-Preview Icon Chip
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(14.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (colors.isGlassmorphism) Color(0x600B0E1E)
+                            else Color(0xB8000000)
+                        )
+                        .border(
+                            0.8.dp,
+                            if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
+                            CircleShape
+                        )
+                        .padding(8.dp)
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color(0xCCFFFFFF),
-                        modifier = Modifier.size(12.dp)
+                        contentDescription = "Preview",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun CollectionsOverviewBanner(
-    totalCollections: Int,
-    totalArts: Int,
-    colors: AxWhavenColors,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(20.dp)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(
-                if (colors.isGlassmorphism) Color(0x28FFFFFF)
-                else colors.surfaceContainerLow
-            )
-            .border(
-                1.dp,
-                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x60FFFFFF), Color(0x18FFFFFF)))
-                else Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.4f), colors.cardBorder.copy(alpha = 0.2f))),
-                shape
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = null,
-                    tint = colors.primaryAccent,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Anime Portfolios",
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                )
-                Text(
-                    text = "Curated offline characters & series",
-                    fontSize = 11.5.sp,
-                    color = colors.textSecondary
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (colors.isGlassmorphism) colors.mintPillBg
-                        else MaterialTheme.colorScheme.secondaryContainer
-                    )
-                    .border(
-                        0.8.dp,
-                        if (colors.isGlassmorphism) colors.mintPillBorder
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "$totalCollections folders",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onSecondaryContainer
-                )
             }
         }
     }
