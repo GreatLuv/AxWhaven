@@ -47,6 +47,7 @@ import com.axwhaven.walls.ui.theme.AppThemeMode
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.MainScreenBottomClearance
 import com.axwhaven.walls.ui.theme.FrostyFastBadgeGreen
 import com.axwhaven.walls.ui.theme.FrostyFastIconBoxBgGreen
 import com.axwhaven.walls.ui.theme.PixelPaletteSeed
@@ -74,7 +75,7 @@ fun SettingsScreen(
     var showUninstallDialog by remember { mutableStateOf(false) }
 
     val haptics = LocalHapticFeedback.current
-    val bottomClearance = FloatingDockClearance
+    val bottomClearance = MainScreenBottomClearance
 
     val outerCardShape = if (colors.isExpressive) RoundedCornerShape(28.dp) else RoundedCornerShape(22.dp)
     val outerCardContainerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else if (colors.isExpressive) colors.surfaceContainerLow else colors.surface
@@ -106,7 +107,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 160.dp)
+            contentPadding = PaddingValues(top = 10.dp, bottom = MainScreenBottomClearance)
         ) {
             // =========================================================================
             // SETTINGS HEADER
@@ -900,7 +901,7 @@ fun SettingsScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(160.dp).navigationBarsPadding())
+                Spacer(modifier = Modifier.height(MainScreenBottomClearance).navigationBarsPadding())
             }
         }
 

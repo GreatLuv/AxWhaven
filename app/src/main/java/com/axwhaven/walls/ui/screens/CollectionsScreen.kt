@@ -41,6 +41,7 @@ import com.axwhaven.walls.ui.components.ArtsCountHeaderBadge
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.MainScreenBottomClearance
 
 @Composable
 fun CollectionsScreen(
@@ -50,7 +51,7 @@ fun CollectionsScreen(
     onWallpaperPreview: (WallpaperItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bottomClearance = FloatingDockClearance
+    val bottomClearance = MainScreenBottomClearance
     val collectionsGridState = rememberLazyGridState()
 
     Box(

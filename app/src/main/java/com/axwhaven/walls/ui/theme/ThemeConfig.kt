@@ -6,11 +6,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Shared clearance value for all scrollable content (All Wallpapers, Collections, AxW Surf, Settings)
- * to ensure the bottom row/footer is fully visible above the persistent floating bottom dock in both
- * gesture navigation and 3-button navigation layouts.
+ * Shared minimum bottom clearance for all scrollable content (All Wallpapers, Collections, AxW Surf, Settings)
+ * to ensure the bottom row/footer is fully visible with generous breathing space above the persistent
+ * floating bottom dock across gesture navigation and 3-button navigation layouts.
  */
-val FloatingDockClearance: Dp = 150.dp
+val MainScreenBottomClearance: Dp = 150.dp
+val FloatingDockClearance: Dp = MainScreenBottomClearance
 
 /**
  * Named green accent tokens for Frosty Glass mode (replaces inline literals).

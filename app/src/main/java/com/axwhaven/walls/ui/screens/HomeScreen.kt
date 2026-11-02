@@ -1,5 +1,6 @@
 package com.axwhaven.walls.ui.screens
 
+import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -65,6 +66,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -73,8 +75,17 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +107,7 @@ import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.MainScreenBottomClearance
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -115,10 +127,10 @@ fun HomeScreen(
     val haptics = LocalHapticFeedback.current
     val allWallpapersGridState = rememberLazyGridState()
 
-    // Bottom clearance: FloatingDockClearance (150.dp) to completely clear floating nav bar
+    // Bottom clearance: MainScreenBottomClearance (150.dp) to completely clear floating nav bar
     val density = LocalDensity.current
     val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomClearance = FloatingDockClearance
+    val bottomClearance = MainScreenBottomClearance
 
     // Scroll Direction Vanish (10.dp threshold + anti-feedback loop settle)
     val scrollThresholdPx = remember(density) { with(density) { 10.dp.toPx() } }
@@ -663,17 +675,46 @@ fun FeaturedSpotlightCarousel(
     if (items.isEmpty()) return
 
     val pagerState = rememberPagerState(pageCount = { items.size })
+    val coroutineScope = rememberCoroutineScope()
+    val motionSpec = ExpressiveMotion.SlowSpatialFloat
 
-    // Auto-advance every 5.0s when user is not manually scrolling, paused during drag
-    LaunchedEffect(pagerState, items.size) {
-        if (items.size <= 1) return@LaunchedEffect
+    // Stop advancing when screen is inactive/backgrounded
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isResumed by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            isResumed = (event == Lifecycle.Event.ON_RESUME)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Respect system animation preferences and reduced-motion settings
+    val context = LocalContext.current
+    val areAnimationsDisabled = remember(context) {
+        try {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1.0f
+            ) == 0f
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // Auto-advance every 5.0s when user is not manually scrolling, paused during touch/drag and backgrounding
+    LaunchedEffect(pagerState, items.size, isResumed, areAnimationsDisabled) {
+        if (items.size <= 1 || areAnimationsDisabled) return@LaunchedEffect
         while (true) {
             delay(5000L)
-            if (!pagerState.isScrollInProgress) {
+            if (!pagerState.isScrollInProgress && isResumed) {
                 val next = (pagerState.currentPage + 1) % items.size
                 pagerState.animateScrollToPage(
                     page = next,
-                    animationSpec = ExpressiveMotion.SlowSpatialFloat
+                    animationSpec = motionSpec
                 )
             }
         }
@@ -685,37 +726,67 @@ fun FeaturedSpotlightCarousel(
             .padding(top = 4.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Compose HorizontalPager configured for 3D Cover Flow layout
         HorizontalPager(
             state = pagerState,
-            contentPadding = PaddingValues(horizontal = 28.dp),
-            pageSpacing = 12.dp,
+            contentPadding = PaddingValues(horizontal = 48.dp),
+            pageSpacing = (-16).dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(380.dp)
         ) { page ->
             val item = items[page]
-            val rawOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-            val absOffset = rawOffset.absoluteValue.coerceIn(0f, 1f)
+            val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+            val safeOffset = pageOffset.coerceIn(-1f, 1f)
+            val distanceFromCenter = kotlin.math.abs(safeOffset)
+            val centerProgress = (1f - distanceFromCenter).coerceIn(0f, 1f)
 
-            // Android 17 Pixel M3 Expressive Hero Carousel: scale down peeking cards and morph corner radius
-            val cardScale = lerp(0.88f, 1.0f, 1f - absOffset)
-            val cardCornerRadius = (20f + 8f * (1f - absOffset)).dp.coerceAtLeast(0.dp)
-            val cardElevation = (2f + 12f * (1f - absOffset)).dp
+            // 3D Cover Flow transformations
+            // Left card (safeOffset > 0): positive rotation, up to +18 deg
+            // Center card (safeOffset == 0): exactly 0 deg
+            // Right card (safeOffset < 0): negative rotation, down to -18 deg
+            val rotationY = safeOffset * 18f
+            val scaleX = lerp(0.90f, 1.0f, centerProgress)
+            val scaleY = lerp(0.85f, 1.0f, centerProgress)
+            val cardAlpha = lerp(0.75f, 1.0f, centerProgress)
+            val cardCornerRadius = (20f + 8f * centerProgress).dp.coerceAtLeast(0.dp)
+            val cardElevation = (2f + 14f * centerProgress).dp
 
-            FeaturedSpotlightItemCard(
-                item = item,
-                colors = colors,
-                cardScale = cardScale,
-                cardCornerRadius = cardCornerRadius,
-                cardElevation = cardElevation,
-                rawOffset = rawOffset,
-                onClick = { onWallpaperClick(item) }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(centerProgress)
+                    .semantics {
+                        selected = (page == pagerState.currentPage)
+                        role = Role.Tab
+                    }
+            ) {
+                FeaturedSpotlightItemCard(
+                    item = item,
+                    colors = colors,
+                    cardRotationY = rotationY,
+                    cardScaleX = scaleX,
+                    cardScaleY = scaleY,
+                    cardAlpha = cardAlpha,
+                    cardCornerRadius = cardCornerRadius,
+                    cardElevation = cardElevation,
+                    safeOffset = safeOffset,
+                    onClick = {
+                        if (page != pagerState.currentPage) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(page, animationSpec = motionSpec)
+                            }
+                        } else {
+                            onWallpaperClick(item)
+                        }
+                    }
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Fluid Morphing Page Indicators
+        // Fluid Morphing & Clickable Page Indicators
         if (items.size > 1) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -738,6 +809,17 @@ fun FeaturedSpotlightCarousel(
                             .width(dotWidth)
                             .clip(RoundedCornerShape(4.dp))
                             .background(dotColor)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    if (pagerState.currentPage != index) {
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(index, animationSpec = motionSpec)
+                                        }
+                                    }
+                                }
+                            )
                     )
                 }
             }
@@ -749,10 +831,13 @@ fun FeaturedSpotlightCarousel(
 private fun FeaturedSpotlightItemCard(
     item: WallpaperItem,
     colors: AxWhavenColors,
-    cardScale: Float,
+    cardRotationY: Float,
+    cardScaleX: Float,
+    cardScaleY: Float,
+    cardAlpha: Float,
     cardCornerRadius: androidx.compose.ui.unit.Dp,
     cardElevation: androidx.compose.ui.unit.Dp,
-    rawOffset: Float,
+    safeOffset: Float,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -797,8 +882,17 @@ private fun FeaturedSpotlightItemCard(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                scaleX = cardScale * pressScale
-                scaleY = cardScale * pressScale
+                transformOrigin = TransformOrigin.Center
+                rotationY = cardRotationY
+                scaleX = cardScaleX * pressScale
+                scaleY = cardScaleY * pressScale
+                alpha = cardAlpha
+                val cardWidth = size.width
+                cameraDistance = if (cardWidth > 0f) {
+                    (cardWidth * 2.5f).coerceIn(1200f, 6000f)
+                } else {
+                    (12f * density).coerceIn(1200f, 6000f)
+                }
             }
     ) {
         // Dynamic soft ambient glow shadow behind the active card
@@ -843,7 +937,7 @@ private fun FeaturedSpotlightItemCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            translationX = rawOffset * 48.dp.toPx()
+                            translationX = safeOffset * 36.dp.toPx()
                             scaleX = 1.15f
                             scaleY = 1.15f
                         }

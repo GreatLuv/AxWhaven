@@ -85,6 +85,7 @@ import com.axwhaven.walls.ui.components.WallpaperImage
 import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.ExpressiveMotion
 import com.axwhaven.walls.ui.theme.FloatingDockClearance
+import com.axwhaven.walls.ui.theme.MainScreenBottomClearance
 import com.axwhaven.walls.ui.theme.FrostyFastBadgeBgGreen
 import com.axwhaven.walls.ui.theme.FrostyFastBadgeGreen
 import com.axwhaven.walls.ui.theme.FrostyFastIconBoxBgGreen
@@ -735,7 +736,7 @@ fun HavenSurfScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         state = gridState,
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = FloatingDockClearance),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = MainScreenBottomClearance),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier
