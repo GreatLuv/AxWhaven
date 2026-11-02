@@ -29,6 +29,7 @@ import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -37,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -717,6 +719,20 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
+                                    if (uiState.directories.isNotEmpty()) {
+                                        item(
+                                            span = { GridItemSpan(2) },
+                                            key = "collections_overview_banner",
+                                            contentType = "collections_overview"
+                                        ) {
+                                            CollectionsOverviewBanner(
+                                                totalCollections = uiState.directories.size,
+                                                totalArts = uiState.totalArtsCount,
+                                                colors = colors
+                                            )
+                                        }
+                                    }
+
                                     items(
                                         items = uiState.directories,
                                         key = { it.id },
@@ -746,6 +762,23 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
+                                    val spotlightItem = allItems.firstOrNull()
+                                    if (spotlightItem != null) {
+                                        item(
+                                            span = { GridItemSpan(2) },
+                                            key = "home_featured_spotlight",
+                                            contentType = "featured_spotlight"
+                                        ) {
+                                            FeaturedSpotlightCard(
+                                                item = spotlightItem,
+                                                totalArtsCount = uiState.totalArtsCount,
+                                                colors = colors,
+                                                onClick = { onWallpaperPreview(spotlightItem) },
+                                                onRollDieClick = { showDieDialog = true }
+                                            )
+                                        }
+                                    }
+
                                     items(
                                         items = allItems,
                                         key = { it.id },
@@ -937,6 +970,279 @@ fun StandaloneDiceButton(
 }
 
 @Composable
+fun FeaturedSpotlightCard(
+    item: WallpaperItem,
+    totalArtsCount: Int,
+    colors: AxWhavenColors,
+    onClick: () -> Unit,
+    onRollDieClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val cardScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1.0f,
+        animationSpec = ExpressiveMotion.FastSpatialFloat,
+        label = "SpotlightScale"
+    )
+
+    val shape = RoundedCornerShape(26.dp)
+
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surfaceContainerLow
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1.85f)
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .clip(shape)
+            .then(
+                if (colors.isGlassmorphism) {
+                    Modifier.border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x20FFFFFF))),
+                        shape
+                    )
+                } else {
+                    Modifier.border(
+                        1.dp,
+                        colors.cardBorder.copy(alpha = 0.4f),
+                        shape
+                    )
+                }
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(bounded = true, color = colors.primaryAccent),
+                onClick = onClick
+            )
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            WallpaperImage(
+                source = item.source,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Multi-stop cinematic dark gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color(0x35000000),
+                                0.45f to Color(0x15000000),
+                                0.72f to Color(0x9905070E),
+                                1.0f to Color(0xF205070E)
+                            )
+                        )
+                    )
+            )
+
+            // Top-left: Glassmorphic Spotlight Badge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(14.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (colors.isGlassmorphism) Color(0x600B0E1E)
+                        else Color(0xB8000000)
+                    )
+                    .border(
+                        0.8.dp,
+                        if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(colors.primaryAccent)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "SPOTLIGHT",
+                        color = Color.White,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            // Top-right: Quick Random Die Surprise Chip
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (colors.isGlassmorphism) colors.surpriseIconBg.copy(alpha = 0.85f)
+                        else colors.primaryAccent.copy(alpha = 0.22f)
+                    )
+                    .border(
+                        0.8.dp,
+                        if (colors.isGlassmorphism) Color(0x70FFFFFF) else colors.primaryAccent.copy(alpha = 0.45f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(bounded = true, color = colors.primaryAccent),
+                        onClick = onRollDieClick
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Casino,
+                        contentDescription = "Surprise Me",
+                        tint = colors.primaryAccent,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = "Surprise",
+                        color = Color.White,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Bottom-left: Title & Interactive Hint
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    text = item.directoryName.ifBlank { "Curated Haven" },
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Featured Anime Haven",
+                        color = Color(0xCCFFFFFF),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xCCFFFFFF),
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CollectionsOverviewBanner(
+    totalCollections: Int,
+    totalArts: Int,
+    colors: AxWhavenColors,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                if (colors.isGlassmorphism) Color(0x28FFFFFF)
+                else colors.surfaceContainerLow
+            )
+            .border(
+                1.dp,
+                if (colors.isGlassmorphism) Brush.verticalGradient(listOf(Color(0x60FFFFFF), Color(0x18FFFFFF)))
+                else Brush.linearGradient(listOf(colors.cardBorder.copy(alpha = 0.4f), colors.cardBorder.copy(alpha = 0.2f))),
+                shape
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (colors.isGlassmorphism) Color(0x35FFFFFF) else colors.surfaceElevated
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = colors.primaryAccent,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Anime Portfolios",
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.textPrimary
+                )
+                Text(
+                    text = "Curated offline characters & series",
+                    fontSize = 11.5.sp,
+                    color = colors.textSecondary
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (colors.isGlassmorphism) colors.mintPillBg
+                        else MaterialTheme.colorScheme.secondaryContainer
+                    )
+                    .border(
+                        0.8.dp,
+                        if (colors.isGlassmorphism) colors.mintPillBorder
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "$totalCollections folders",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (colors.isGlassmorphism) colors.mintText else MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun CollectionArtCard(
     directory: ArtDirectory,
     colors: AxWhavenColors,
@@ -953,7 +1259,7 @@ fun CollectionArtCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 28.dp else 20.dp,
+        targetValue = if (isPressed) 28.dp else 22.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "ColCardCorner"
     )
@@ -1104,12 +1410,13 @@ fun CollectionArtCard(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "→",
-                                color = if (colors.isGlassmorphism) colors.secondaryAccent else MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.offset(x = arrowOffset)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = if (colors.isGlassmorphism) colors.secondaryAccent else MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .offset(x = arrowOffset)
                             )
                         }
                     }
@@ -1136,7 +1443,7 @@ fun CleanWallpaperCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 28.dp else 20.dp,
+        targetValue = if (isPressed) 28.dp else 22.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "CardCorner"
     )
@@ -1150,7 +1457,7 @@ fun CleanWallpaperCard(
         ),
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(0.68f)
+            .aspectRatio(0.64f)
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
@@ -1160,7 +1467,7 @@ fun CleanWallpaperCard(
                 if (colors.isGlassmorphism) {
                     Modifier.border(
                         1.dp,
-                        Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x20FFFFFF))),
+                        Brush.verticalGradient(listOf(Color(0x65FFFFFF), Color(0x18FFFFFF))),
                         shape
                     )
                 } else Modifier
@@ -1171,13 +1478,57 @@ fun CleanWallpaperCard(
                 onClick = onClick
             )
     ) {
-        Box(modifier = Modifier.fillMaxSize().clip(shape)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             WallpaperImage(
                 source = item.source,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Subtle bottom vignette scrim for text legibility
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.Transparent,
+                                0.70f to Color.Transparent,
+                                1.0f to Color(0x8A000000)
+                            )
+                        )
+                    )
+            )
+
+            // Subtle bottom collection pill badge
+            if (item.directoryName.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (colors.isGlassmorphism) Color(0x750B0E1E)
+                            else Color(0xB3000000)
+                        )
+                        .border(
+                            0.6.dp,
+                            if (colors.isGlassmorphism) Color(0x45FFFFFF) else Color(0x25FFFFFF),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = item.directoryName,
+                        color = Color.White,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }
