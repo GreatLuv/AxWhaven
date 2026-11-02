@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -746,12 +747,26 @@ fun HomeScreen(
                                     Text("No wallpapers available.", color = colors.textSecondary)
                                 }
                             } else {
-                                val spotlightWallpapers = remember(uiState.directories, allItems) {
-                                    val fromDirs = uiState.directories.mapNotNull { it.coverItem }
-                                    if (fromDirs.isNotEmpty()) {
-                                        fromDirs.take(7)
+                                val sessionSeed = rememberSaveable { kotlin.random.Random.nextLong() }
+
+                                val spotlightWallpapers = remember(uiState.directories, allItems, sessionSeed) {
+                                    if (allItems.isEmpty()) {
+                                        emptyList()
                                     } else {
-                                        allItems.take(6)
+                                        val rng = kotlin.random.Random(sessionSeed)
+                                        val sampledFromDirs = uiState.directories.mapNotNull { dir ->
+                                            if (dir.items.isNotEmpty()) {
+                                                dir.items.random(rng)
+                                            } else {
+                                                dir.coverItem
+                                            }
+                                        }.shuffled(rng)
+
+                                        if (sampledFromDirs.isNotEmpty()) {
+                                            sampledFromDirs.take(7)
+                                        } else {
+                                            allItems.shuffled(rng).take(7)
+                                        }
                                     }
                                 }
 
@@ -1084,7 +1099,13 @@ private fun FeaturedSpotlightItemCard(
         label = "SpotlightPressScale"
     )
 
-    val shape = RoundedCornerShape(26.dp)
+    val cardCornerRadius by animateDpAsState(
+        targetValue = if (isPressed) 32.dp else 26.dp,
+        animationSpec = ExpressiveMotion.FastSpatialDp,
+        label = "SpotlightCornerRadius"
+    )
+
+    val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
 
     Box(
         modifier = Modifier
