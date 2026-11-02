@@ -23,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,8 +33,43 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.axwhaven.walls.model.ProviderSite
 import com.axwhaven.walls.model.WallpaperSource
+import com.axwhaven.walls.ui.theme.AxWhavenColors
 import com.axwhaven.walls.ui.theme.LocalAxWhavenColors
 import java.io.File
+
+/**
+ * Referer header required by each remote provider for hotlink-protected origins.
+ */
+private fun ProviderSite.defaultReferer(): String = when (this) {
+    ProviderSite.PIXIV -> "https://www.pixiv.net/"
+    ProviderSite.GELBOORU -> "https://gelbooru.com/"
+    ProviderSite.ANIME_PICTURES -> "https://anime-pictures.net/"
+    ProviderSite.DANBOORU -> "https://danbooru.donmai.us/"
+    ProviderSite.SAFEBOORU -> "https://safebooru.org/"
+    ProviderSite.YANDERE -> "https://yande.re/"
+    ProviderSite.KONACHAN -> "https://konachan.com/"
+    ProviderSite.WALLHAVEN -> "https://wallhaven.cc/"
+}
+
+/**
+ * Booru APIs reject browser UAs, while image CDNs reject the app UA.
+ */
+private fun ProviderSite.imageUserAgent(): String =
+    if (this == ProviderSite.DANBOORU || this == ProviderSite.ANIME_PICTURES) {
+        "AxWhaven/1.0 (Android; Mobile)"
+    } else {
+        "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+    }
+
+/**
+ * Single source of truth for outbound image request headers.
+ * Previously this header block was duplicated at every call site.
+ */
+private fun ImageRequest.Builder.applyRemoteHeaders(source: WallpaperSource.RemoteUrl): ImageRequest.Builder =
+    apply {
+        addHeader("Referer", source.referer ?: source.site.defaultReferer())
+        addHeader("User-Agent", source.site.imageUserAgent())
+    }
 
 @Composable
 fun WallpaperImage(
@@ -56,7 +90,7 @@ fun WallpaperImage(
         null -> null
     }
 
-    if (model == null) {
+    if (model == null || (source is WallpaperSource.AssetPath && source.assetRelativePath.isBlank())) {
         Box(
             modifier = modifier.background(colors.surfaceElevated),
             contentAlignment = Alignment.Center
@@ -71,36 +105,74 @@ fun WallpaperImage(
         return
     }
 
+    val remoteSource = source as? WallpaperSource.RemoteUrl
+
     val request = ImageRequest.Builder(context)
         .data(model)
-        .crossfade(if (source is WallpaperSource.RemoteUrl) 220 else 0)
+        .crossfade(if (remoteSource != null) 220 else 0)
         .allowHardware(true)
         .memoryCachePolicy(CachePolicy.ENABLED)
         .diskCachePolicy(CachePolicy.ENABLED)
-        .apply {
-            if (source is WallpaperSource.RemoteUrl) {
-                val referer = source.referer ?: when (source.site) {
-                    ProviderSite.PIXIV -> "https://www.pixiv.net/"
-                    ProviderSite.GELBOORU -> "https://gelbooru.com/"
-                    ProviderSite.ANIME_PICTURES -> "https://anime-pictures.net/"
-                    ProviderSite.DANBOORU -> "https://danbooru.donmai.us/"
-                    ProviderSite.SAFEBOORU -> "https://safebooru.org/"
-                    ProviderSite.YANDERE -> "https://yande.re/"
-                    ProviderSite.KONACHAN -> "https://konachan.com/"
-                    ProviderSite.WALLHAVEN -> "https://wallhaven.cc/"
-                }
-                addHeader("Referer", referer)
-                val ua = if (source.site == ProviderSite.DANBOORU || source.site == ProviderSite.ANIME_PICTURES) {
-                    "AxWhaven/1.0 (Android; Mobile)"
-                } else {
-                    "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
-                }
-                addHeader("User-Agent", ua)
-            }
-        }
+        .apply { if (remoteSource != null) applyRemoteHeaders(remoteSource) }
         .build()
 
-    // Subtle pulsing animation for loading state
+    // Cached thumbnail shown instantly while the full-resolution bitmap streams in.
+    val fallbackRemote = remoteSource?.takeIf {
+        useFullResolution && it.previewUrl.isNotBlank() && it.previewUrl != it.fullImageUrl
+    }
+
+    SubcomposeAsyncImage(
+        model = request,
+        contentDescription = contentDescription,
+        contentScale = contentScale,
+        modifier = modifier,
+        loading = {
+            if (fallbackRemote != null) {
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(fallbackRemote.previewUrl)
+                        .allowHardware(true)
+                        .apply { applyRemoteHeaders(fallbackRemote) }
+                        .build(),
+                    contentDescription = contentDescription,
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                ImageLoadingSkeleton(colors = colors)
+            }
+        },
+        error = {
+            if (fallbackRemote != null) {
+                // Fall back to the thumbnail when the full-resolution URL fails.
+                SubcomposeAsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(fallbackRemote.previewUrl)
+                        .crossfade(300)
+                        .allowHardware(true)
+                        .apply { applyRemoteHeaders(fallbackRemote) }
+                        .build(),
+                    contentDescription = contentDescription,
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                ImageUnavailablePlaceholder(colors = colors)
+            }
+        }
+    )
+}
+
+/**
+ * Pulsing skeleton for the loading slot only.
+ *
+ * The infinite transition deliberately lives inside this composable so it is created
+ * exclusively while [WallpaperImage] is still loading. Hoisting it into the parent meant
+ * every cell in a grid ran its own infinite frame-clock animation even after the bitmap
+ * had finished loading.
+ */
+@Composable
+private fun ImageLoadingSkeleton(colors: AxWhavenColors) {
     val infiniteTransition = rememberInfiniteTransition(label = "ImageLoadingShimmer")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.35f,
@@ -112,121 +184,49 @@ fun WallpaperImage(
         label = "PulseAlpha"
     )
 
-    SubcomposeAsyncImage(
-        model = request,
-        contentDescription = contentDescription,
-        contentScale = contentScale,
-        modifier = modifier,
-        loading = {
-            if (useFullResolution && source is WallpaperSource.RemoteUrl && source.previewUrl.isNotBlank() && source.previewUrl != source.fullImageUrl) {
-                // Instantly display cached preview while high-res loads in background
-                val previewRequest = ImageRequest.Builder(context)
-                    .data(source.previewUrl)
-                    .allowHardware(true)
-                    .apply {
-                        val referer = source.referer ?: when (source.site) {
-                            ProviderSite.PIXIV -> "https://www.pixiv.net/"
-                            ProviderSite.GELBOORU -> "https://gelbooru.com/"
-                            ProviderSite.ANIME_PICTURES -> "https://anime-pictures.net/"
-                            ProviderSite.DANBOORU -> "https://danbooru.donmai.us/"
-                            ProviderSite.SAFEBOORU -> "https://safebooru.org/"
-                            ProviderSite.YANDERE -> "https://yande.re/"
-                            ProviderSite.KONACHAN -> "https://konachan.com/"
-                            ProviderSite.WALLHAVEN -> "https://wallhaven.cc/"
-                        }
-                        addHeader("Referer", referer)
-                        val ua = if (source.site == ProviderSite.DANBOORU || source.site == ProviderSite.ANIME_PICTURES) {
-                            "AxWhaven/1.0 (Android; Mobile)"
-                        } else {
-                            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
-                        }
-                        addHeader("User-Agent", ua)
-                    }
-                    .build()
-                SubcomposeAsyncImage(
-                    model = previewRequest,
-                    contentDescription = contentDescription,
-                    contentScale = contentScale,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                val skeletonColor = if (colors.isGlassmorphism) {
-                    colors.surfaceElevated
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainerHigh
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(skeletonColor.copy(alpha = pulseAlpha)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = null,
-                        tint = colors.primaryAccent.copy(alpha = 0.25f),
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
-        },
-        error = {
-            if (useFullResolution && source is WallpaperSource.RemoteUrl && source.previewUrl.isNotBlank() && source.previewUrl != source.fullImageUrl) {
-                // Fallback to preview thumbnail if full resolution URL fails
-                val fallbackRequest = ImageRequest.Builder(context)
-                    .data(source.previewUrl)
-                    .crossfade(300)
-                    .allowHardware(true)
-                    .apply {
-                        val referer = source.referer ?: when (source.site) {
-                            ProviderSite.PIXIV -> "https://www.pixiv.net/"
-                            ProviderSite.GELBOORU -> "https://gelbooru.com/"
-                            ProviderSite.ANIME_PICTURES -> "https://anime-pictures.net/"
-                            ProviderSite.DANBOORU -> "https://danbooru.donmai.us/"
-                            ProviderSite.SAFEBOORU -> "https://safebooru.org/"
-                            ProviderSite.YANDERE -> "https://yande.re/"
-                            ProviderSite.KONACHAN -> "https://konachan.com/"
-                            ProviderSite.WALLHAVEN -> "https://wallhaven.cc/"
-                        }
-                        addHeader("Referer", referer)
-                        val ua = if (source.site == ProviderSite.DANBOORU || source.site == ProviderSite.ANIME_PICTURES) {
-                            "AxWhaven/1.0 (Android; Mobile)"
-                        } else {
-                            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
-                        }
-                        addHeader("User-Agent", ua)
-                    }
-                    .build()
-                SubcomposeAsyncImage(
-                    model = fallbackRequest,
-                    contentDescription = contentDescription,
-                    contentScale = contentScale,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(colors.surfaceElevated),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.BrokenImage,
-                            contentDescription = "Image unavailable",
-                            tint = colors.textMuted.copy(alpha = 0.6f),
-                            modifier = Modifier.size(30.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Unavailable",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.textMuted
-                        )
-                    }
-                }
-            }
+    val skeletonColor = if (colors.isGlassmorphism) {
+        colors.surfaceElevated
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(skeletonColor.copy(alpha = pulseAlpha)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Image,
+            contentDescription = null,
+            tint = colors.primaryAccent.copy(alpha = 0.25f),
+            modifier = Modifier.size(32.dp)
+        )
+    }
+}
+
+@Composable
+private fun ImageUnavailablePlaceholder(colors: AxWhavenColors) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.surfaceElevated),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.BrokenImage,
+                contentDescription = "Image unavailable",
+                tint = colors.textMuted.copy(alpha = 0.6f),
+                modifier = Modifier.size(30.dp)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Unavailable",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.textMuted
+            )
         }
-    )
+    }
 }

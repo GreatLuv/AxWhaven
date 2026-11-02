@@ -1,3 +1,5 @@
+@file:OptIn(coil.annotation.ExperimentalCoilApi::class)
+
 package com.axwhaven.walls.data
 
 import android.content.Context

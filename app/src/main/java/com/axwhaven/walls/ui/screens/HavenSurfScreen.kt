@@ -578,7 +578,11 @@ fun HavenSurfScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(uiState.tagSuggestions) { tag ->
+                    items(
+                        items = uiState.tagSuggestions,
+                        key = { it },
+                        contentType = { "tag_suggestion" }
+                    ) { tag ->
                         AssistChip(
                             onClick = { onApplySuggestion(tag) },
                             label = {
@@ -1513,6 +1517,7 @@ fun ProviderCookieDialog(
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
+                                    @Suppress("DEPRECATION")
                                     settings.databaseEnabled = true
                                     settings.useWideViewPort = true
                                     settings.loadWithOverviewMode = true

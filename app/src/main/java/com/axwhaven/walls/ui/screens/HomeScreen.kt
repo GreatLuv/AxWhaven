@@ -717,7 +717,11 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(uiState.directories, key = { it.id }) { directory ->
+                                    items(
+                                        items = uiState.directories,
+                                        key = { it.id },
+                                        contentType = { "collection_card" }
+                                    ) { directory ->
                                         CollectionArtCard(
                                             directory = directory,
                                             colors = colors,
@@ -1151,7 +1155,6 @@ fun CleanWallpaperCard(
                 scaleX = cardScale
                 scaleY = cardScale
             }
-            .clip(shape)
             .clip(shape)
             .then(
                 if (colors.isGlassmorphism) {

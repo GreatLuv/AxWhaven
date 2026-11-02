@@ -14,7 +14,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,8 +74,7 @@ fun SettingsScreen(
     var showUninstallDialog by remember { mutableStateOf(false) }
 
     val haptics = LocalHapticFeedback.current
-    val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomClearance = 110.dp + navBottomInset
+    val bottomClearance = FloatingDockClearance
 
     val outerCardShape = if (colors.isExpressive) RoundedCornerShape(28.dp) else RoundedCornerShape(22.dp)
     val outerCardContainerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else if (colors.isExpressive) colors.surfaceContainerLow else colors.surface
@@ -899,10 +897,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(FloatingDockClearance))
             }
         }
 
