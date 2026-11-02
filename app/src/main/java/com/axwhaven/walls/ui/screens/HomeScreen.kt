@@ -3,9 +3,11 @@ package com.axwhaven.walls.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,6 +35,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,8 +75,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlin.math.absoluteValue
 import com.axwhaven.walls.HomeNavigationTab
 import com.axwhaven.walls.WallpaperUiState
 import com.axwhaven.walls.model.ArtDirectory
@@ -754,6 +760,15 @@ fun HomeScreen(
                                     Text("No wallpapers available.", color = colors.textSecondary)
                                 }
                             } else {
+                                val spotlightWallpapers = remember(uiState.directories, allItems) {
+                                    val fromDirs = uiState.directories.mapNotNull { it.coverItem }
+                                    if (fromDirs.isNotEmpty()) {
+                                        fromDirs.take(7)
+                                    } else {
+                                        allItems.take(6)
+                                    }
+                                }
+
                                 LazyVerticalGrid(
                                     state = allWallpapersGridState,
                                     columns = GridCells.Fixed(2),
@@ -762,18 +777,17 @@ fun HomeScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    val spotlightItem = allItems.firstOrNull()
-                                    if (spotlightItem != null) {
+                                    if (spotlightWallpapers.isNotEmpty()) {
                                         item(
                                             span = { GridItemSpan(2) },
-                                            key = "home_featured_spotlight",
-                                            contentType = "featured_spotlight"
+                                            key = "home_featured_spotlight_carousel",
+                                            contentType = "featured_spotlight_carousel"
                                         ) {
-                                            FeaturedSpotlightCard(
-                                                item = spotlightItem,
+                                            FeaturedSpotlightCarousel(
+                                                items = spotlightWallpapers,
                                                 totalArtsCount = uiState.totalArtsCount,
                                                 colors = colors,
-                                                onClick = { onWallpaperPreview(spotlightItem) },
+                                                onWallpaperClick = { item -> onWallpaperPreview(item) },
                                                 onRollDieClick = { showDieDialog = true }
                                             )
                                         }
@@ -970,21 +984,121 @@ fun StandaloneDiceButton(
 }
 
 @Composable
-fun FeaturedSpotlightCard(
-    item: WallpaperItem,
+fun FeaturedSpotlightCarousel(
+    items: List<WallpaperItem>,
     totalArtsCount: Int,
     colors: AxWhavenColors,
-    onClick: () -> Unit,
+    onWallpaperClick: (WallpaperItem) -> Unit,
     onRollDieClick: () -> Unit,
     modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+
+    val pagerState = rememberPagerState(pageCount = { items.size })
+
+    // Auto-advance every 5.5s when user is not manually scrolling
+    LaunchedEffect(pagerState) {
+        while (true) {
+            delay(5500L)
+            if (!pagerState.isScrollInProgress && items.size > 1) {
+                val next = (pagerState.currentPage + 1) % items.size
+                pagerState.animateScrollToPage(
+                    page = next,
+                    animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing)
+                )
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            contentPadding = PaddingValues(horizontal = 24.dp),
+            pageSpacing = 14.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(350.dp)
+        ) { page ->
+            val item = items[page]
+            val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
+            val cardScale = lerp(
+                start = 0.92f,
+                stop = 1.0f,
+                fraction = 1f - pageOffset.coerceIn(0f, 1f)
+            )
+            val cardAlpha = lerp(
+                start = 0.70f,
+                stop = 1.0f,
+                fraction = 1f - pageOffset.coerceIn(0f, 1f)
+            )
+
+            FeaturedSpotlightItemCard(
+                item = item,
+                colors = colors,
+                cardScale = cardScale,
+                cardAlpha = cardAlpha,
+                onClick = { onWallpaperClick(item) },
+                onRollDieClick = onRollDieClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Dynamic Pill Page Indicators
+        if (items.size > 1) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+            ) {
+                repeat(items.size) { index ->
+                    val isSelected = pagerState.currentPage == index
+                    val pillWidth by animateDpAsState(
+                        targetValue = if (isSelected) 22.dp else 7.dp,
+                        animationSpec = ExpressiveMotion.FastSpatialDp,
+                        label = "SpotlightPillWidth"
+                    )
+                    val pillAlpha by animateFloatAsState(
+                        targetValue = if (isSelected) 1.0f else 0.35f,
+                        animationSpec = ExpressiveMotion.FastEffectsFloat,
+                        label = "SpotlightPillAlpha"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .height(6.5.dp)
+                            .width(pillWidth)
+                            .clip(RoundedCornerShape(3.5.dp))
+                            .background(colors.primaryAccent.copy(alpha = pillAlpha))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeaturedSpotlightItemCard(
+    item: WallpaperItem,
+    colors: AxWhavenColors,
+    cardScale: Float,
+    cardAlpha: Float,
+    onClick: () -> Unit,
+    onRollDieClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    val cardScale by animateFloatAsState(
+    val pressScale by animateFloatAsState(
         targetValue = if (isPressed) 0.97f else 1.0f,
         animationSpec = ExpressiveMotion.FastSpatialFloat,
-        label = "SpotlightScale"
+        label = "SpotlightPressScale"
     )
 
     val shape = RoundedCornerShape(26.dp)
@@ -994,12 +1108,12 @@ fun FeaturedSpotlightCard(
         colors = CardDefaults.cardColors(
             containerColor = if (colors.isGlassmorphism) Color(0x28FFFFFF) else colors.surfaceContainerLow
         ),
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1.85f)
+        modifier = Modifier
+            .fillMaxSize()
             .graphicsLayer {
-                scaleX = cardScale
-                scaleY = cardScale
+                scaleX = cardScale * pressScale
+                scaleY = cardScale * pressScale
+                alpha = cardAlpha
             }
             .clip(shape)
             .then(
@@ -1012,7 +1126,7 @@ fun FeaturedSpotlightCard(
                 } else {
                     Modifier.border(
                         1.dp,
-                        colors.cardBorder.copy(alpha = 0.4f),
+                        colors.cardBorder.copy(alpha = 0.45f),
                         shape
                     )
                 }
@@ -1024,10 +1138,12 @@ fun FeaturedSpotlightCard(
             )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // Full Portrait Wallpaper Image, scaled and aligned to showcase character art
             WallpaperImage(
                 source = item.source,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -1038,16 +1154,16 @@ fun FeaturedSpotlightCard(
                     .background(
                         Brush.verticalGradient(
                             colorStops = arrayOf(
-                                0.0f to Color(0x35000000),
-                                0.45f to Color(0x15000000),
-                                0.72f to Color(0x9905070E),
+                                0.0f to Color(0x40000000),
+                                0.35f to Color.Transparent,
+                                0.65f to Color(0x8805070E),
                                 1.0f to Color(0xF205070E)
                             )
                         )
                     )
             )
 
-            // Top-left: Glassmorphic Spotlight Badge
+            // Top-left: Glassmorphic Spotlight Chip
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -1121,15 +1237,33 @@ fun FeaturedSpotlightCard(
                 }
             }
 
-            // Bottom-left: Title & Interactive Hint
+            // Bottom-left: Title, Collection Tag & Tap Hint
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
+                if (item.directoryName.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.primaryAccent.copy(alpha = 0.28f))
+                            .border(0.6.dp, colors.primaryAccent.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = item.directoryName,
+                            color = colors.primaryAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
                 Text(
-                    text = item.directoryName.ifBlank { "Curated Haven" },
+                    text = item.title.ifBlank { item.directoryName.ifBlank { "Curated Haven" } },
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
@@ -1140,7 +1274,7 @@ fun FeaturedSpotlightCard(
                 Spacer(modifier = Modifier.height(3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Featured Anime Haven",
+                        text = "Tap to preview & apply",
                         color = Color(0xCCFFFFFF),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
@@ -1306,6 +1440,7 @@ fun CollectionArtCard(
                     source = directory.coverItem?.source,
                     contentDescription = directory.artName,
                     contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -1483,6 +1618,7 @@ fun CleanWallpaperCard(
                 source = item.source,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
                 modifier = Modifier.fillMaxSize()
             )
 

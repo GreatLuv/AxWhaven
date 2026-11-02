@@ -77,6 +77,7 @@ fun WallpaperImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
     useFullResolution: Boolean = false
 ) {
     val context = LocalContext.current
@@ -125,6 +126,7 @@ fun WallpaperImage(
         model = request,
         contentDescription = contentDescription,
         contentScale = contentScale,
+        alignment = alignment,
         modifier = modifier,
         loading = {
             if (fallbackRemote != null) {
@@ -136,6 +138,7 @@ fun WallpaperImage(
                         .build(),
                     contentDescription = contentDescription,
                     contentScale = contentScale,
+                    alignment = alignment,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -154,6 +157,7 @@ fun WallpaperImage(
                         .build(),
                     contentDescription = contentDescription,
                     contentScale = contentScale,
+                    alignment = alignment,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {

@@ -914,7 +914,7 @@ fun HavenSurfResultCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 28.dp else 20.dp,
+        targetValue = if (isPressed) 28.dp else 22.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "HavenSurfCardCorner"
     )
@@ -928,7 +928,7 @@ fun HavenSurfResultCard(
         ),
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(0.68f)
+            .aspectRatio(0.64f)
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
@@ -954,6 +954,7 @@ fun HavenSurfResultCard(
                 source = item.source,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
                 modifier = Modifier.fillMaxSize()
             )
 
