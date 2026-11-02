@@ -4,10 +4,15 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.lerp as colorLerp
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -99,8 +104,8 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     uiState: WallpaperUiState,
     colors: AxWhavenColors,
-    onTabSelect: (HomeNavigationTab) -> Unit,
-    onDirectorySelect: (ArtDirectory?) -> Unit,
+    onTabSelect: (HomeNavigationTab) -> Unit = {},
+    onDirectorySelect: (ArtDirectory?) -> Unit = {},
     onWallpaperPreview: (WallpaperItem) -> Unit,
     onRollDie: (WallpaperTarget) -> Unit,
     modifier: Modifier = Modifier
@@ -108,7 +113,6 @@ fun HomeScreen(
     var showDieDialog by remember { mutableStateOf(false) }
 
     val haptics = LocalHapticFeedback.current
-    val collectionsGridState = rememberLazyGridState()
     val allWallpapersGridState = rememberLazyGridState()
 
     // Bottom clearance: FloatingDockClearance (150.dp) to completely clear floating nav bar
@@ -122,8 +126,7 @@ fun HomeScreen(
     var scrollAccumulator by remember { mutableFloatStateOf(0f) }
     var lastVisibilityChangeTime by remember { mutableLongStateOf(0L) }
 
-    val isAllWallpapers = uiState.homeTab == HomeNavigationTab.ALL_WALLPAPERS
-    val activeGridState = if (isAllWallpapers) allWallpapersGridState else collectionsGridState
+    val activeGridState = allWallpapersGridState
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -171,8 +174,8 @@ fun HomeScreen(
         }
     }
 
-    // Reset to "shown" on tab change
-    LaunchedEffect(uiState.homeTab) {
+    // Reset to "shown" on initial composition
+    LaunchedEffect(Unit) {
         isScrollingDown = false
         scrollAccumulator = 0f
     }
@@ -411,400 +414,68 @@ fun HomeScreen(
                     }
                 }
 
-                // 2. SEGMENTED NAVIGATION TOGGLE ("All Wallpapers" [0] | "Collections" [1])
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            if (colors.isGlassmorphism) {
-                                Brush.verticalGradient(listOf(Color(0x2EFFFFFF), Color(0x18FFFFFF)))
+                // 2. ALL WALLPAPERS GRID (Hero Spotlight Carousel scrolls naturally as top item)
+                val allItems = uiState.allLocalWallpapers
+                if (allItems.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No wallpapers available.", color = colors.textSecondary)
+                    }
+                } else {
+                    val sessionSeed = rememberSaveable { kotlin.random.Random.nextLong() }
+
+                    val spotlightWallpapers = remember(uiState.directories, allItems, sessionSeed) {
+                        if (allItems.isEmpty()) {
+                            emptyList()
+                        } else {
+                            val rng = kotlin.random.Random(sessionSeed)
+                            val sampledFromDirs = uiState.directories.mapNotNull { dir ->
+                                if (dir.items.isNotEmpty()) {
+                                    dir.items.random(rng)
+                                } else {
+                                    dir.coverItem
+                                }
+                            }.shuffled(rng)
+
+                            if (sampledFromDirs.isNotEmpty()) {
+                                sampledFromDirs.take(7)
                             } else {
-                                Brush.linearGradient(listOf(colors.surface, colors.surface))
-                            }
-                        )
-                        .then(
-                            if (colors.isGlassmorphism) {
-                                Modifier.border(
-                                    1.dp,
-                                    Brush.verticalGradient(listOf(Color(0x70FFFFFF), Color(0x25FFFFFF))),
-                                    RoundedCornerShape(24.dp)
-                                )
-                            } else Modifier
-                        )
-                        .padding(4.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    val pillWidth = maxWidth / 2
-                    val targetTabOffset = if (isAllWallpapers) 0f else 1f
-                    val animatedTabOffset by animateFloatAsState(
-                        targetValue = targetTabOffset,
-                        animationSpec = ExpressiveMotion.FastSpatialFloat,
-                        label = "SegmentedPillOffset"
-                    )
-
-                    val activeGlassPill = if (colors.isGlassmorphism) Color(0x40FFFFFF) else colors.surfaceElevated
-
-                    // Smooth horizontal sliding indicator pill with Expressive fastSpatial spring
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(pillWidth)
-                            .offset {
-                                IntOffset(
-                                    x = (animatedTabOffset * pillWidth.toPx()).roundToInt(),
-                                    y = 0
-                                )
-                            }
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(activeGlassPill)
-                            .then(
-                                if (colors.isGlassmorphism) {
-                                    Modifier.border(0.8.dp, Color(0x55FFFFFF), RoundedCornerShape(20.dp))
-                                } else Modifier
-                            )
-                    )
-
-                    val allWallpapersInteractionSource = remember { MutableInteractionSource() }
-                    val isAllWallpapersPressed by allWallpapersInteractionSource.collectIsPressedAsState()
-                    val allWallpapersScale by animateFloatAsState(
-                        targetValue = if (isAllWallpapersPressed) 0.95f else 1.0f,
-                        animationSpec = ExpressiveMotion.FastSpatialFloat,
-                        label = "AllWallpapersTabScale"
-                    )
-
-                    val collectionsInteractionSource = remember { MutableInteractionSource() }
-                    val isCollectionsPressed by collectionsInteractionSource.collectIsPressedAsState()
-                    val collectionsScale by animateFloatAsState(
-                        targetValue = if (isCollectionsPressed) 0.95f else 1.0f,
-                        animationSpec = ExpressiveMotion.FastSpatialFloat,
-                        label = "CollectionsTabScale"
-                    )
-
-                    val allWallpapersTextColor by animateColorAsState(
-                        targetValue = if (isAllWallpapers) colors.textPrimary else colors.textMuted,
-                        animationSpec = ExpressiveMotion.FastEffectsColor,
-                        label = "AllTabText"
-                    )
-                    val collectionsTextColor by animateColorAsState(
-                        targetValue = if (!isAllWallpapers) colors.textPrimary else colors.textMuted,
-                        animationSpec = ExpressiveMotion.FastEffectsColor,
-                        label = "ColTabText"
-                    )
-
-                    val allTabWeight by animateIntAsState(
-                        targetValue = if (isAllWallpapers) 800 else 500,
-                        label = "AllTabWeight"
-                    )
-                    val allTabScale by animateFloatAsState(
-                        targetValue = if (isAllWallpapers) 1.04f else 1.0f,
-                        animationSpec = ExpressiveMotion.FastSpatialFloat,
-                        label = "AllTabScale"
-                    )
-
-                    val colTabWeight by animateIntAsState(
-                        targetValue = if (!isAllWallpapers) 800 else 500,
-                        label = "ColTabWeight"
-                    )
-                    val colTabScale by animateFloatAsState(
-                        targetValue = if (!isAllWallpapers) 1.04f else 1.0f,
-                        animationSpec = ExpressiveMotion.FastSpatialFloat,
-                        label = "ColTabScale"
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Tab 0: All Wallpapers (Default on launch)
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .graphicsLayer {
-                                    scaleX = allWallpapersScale
-                                    scaleY = allWallpapersScale
-                                }
-                                .clip(RoundedCornerShape(20.dp))
-                                .pointerInput(Unit) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        val press = PressInteraction.Press(down.position)
-                                        allWallpapersInteractionSource.tryEmit(press)
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onTabSelect(HomeNavigationTab.ALL_WALLPAPERS)
-                                        val up = waitForUpOrCancellation()
-                                        if (up != null) {
-                                            allWallpapersInteractionSource.tryEmit(PressInteraction.Release(press))
-                                        } else {
-                                            allWallpapersInteractionSource.tryEmit(PressInteraction.Cancel(press))
-                                        }
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.GridView,
-                                    contentDescription = null,
-                                    tint = allWallpapersTextColor,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(contentAlignment = Alignment.Center) {
-                                    // Reserved space for ExtraBold text prevents layout jitter and tab width reflow
-                                    Text(
-                                        text = "All Wallpapers",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.Transparent,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "All Wallpapers",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight(allTabWeight.coerceIn(1, 1000)),
-                                        color = allWallpapersTextColor,
-                                        maxLines = 1,
-                                        modifier = Modifier.graphicsLayer {
-                                            scaleX = allTabScale
-                                            scaleY = allTabScale
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        // Tab 1: Collections
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .graphicsLayer {
-                                    scaleX = collectionsScale
-                                    scaleY = collectionsScale
-                                }
-                                .clip(RoundedCornerShape(20.dp))
-                                .pointerInput(Unit) {
-                                    awaitEachGesture {
-                                        val down = awaitFirstDown(requireUnconsumed = false)
-                                        val press = PressInteraction.Press(down.position)
-                                        collectionsInteractionSource.tryEmit(press)
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        onTabSelect(HomeNavigationTab.COLLECTIONS)
-                                        val up = waitForUpOrCancellation()
-                                        if (up != null) {
-                                            collectionsInteractionSource.tryEmit(PressInteraction.Release(press))
-                                        } else {
-                                            collectionsInteractionSource.tryEmit(PressInteraction.Cancel(press))
-                                        }
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = collectionsTextColor,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(contentAlignment = Alignment.Center) {
-                                    // Reserved space for ExtraBold text prevents layout jitter and tab width reflow
-                                    Text(
-                                        text = "Collections",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.Transparent,
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "Collections",
-                                        fontSize = 13.5.sp,
-                                        fontWeight = FontWeight(colTabWeight.coerceIn(1, 1000)),
-                                        color = collectionsTextColor,
-                                        maxLines = 1,
-                                        modifier = Modifier.graphicsLayer {
-                                            scaleX = colTabScale
-                                            scaleY = colTabScale
-                                        }
-                                    )
-                                }
+                                allItems.shuffled(rng).take(7)
                             }
                         }
                     }
-                }
 
-                // 3. MAIN CONTENT AREA (All Wallpapers [0] <-> Collections [1])
-                AnimatedContent(
-                    targetState = uiState.homeTab,
-                    transitionSpec = {
-                        if (targetState.ordinal > initialState.ordinal) {
-                            // Forward (All Wallpapers [0] -> Collections [1]): moving right
-                            (slideInHorizontally(
-                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
-                                initialOffsetX = { (it * 0.30f).toInt() }
-                            ) + scaleIn(
-                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
-                                initialScale = 0.94f
-                            ) + fadeIn(
-                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
-                            )).togetherWith(
-                                slideOutHorizontally(
-                                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
-                                    targetOffsetX = { -(it * 0.30f).toInt() }
-                                ) + scaleOut(
-                                    animationSpec = ExpressiveMotion.DefaultSpatialFloat,
-                                    targetScale = 0.94f
-                                ) + fadeOut(
-                                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
+                    LazyVerticalGrid(
+                        state = allWallpapersGridState,
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = bottomClearance),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        if (spotlightWallpapers.isNotEmpty()) {
+                            item(
+                                span = { GridItemSpan(maxLineSpan) },
+                                key = "home_featured_spotlight_carousel",
+                                contentType = "featured_spotlight_carousel"
+                            ) {
+                                FeaturedSpotlightCarousel(
+                                    items = spotlightWallpapers,
+                                    colors = colors,
+                                    onWallpaperClick = { item -> onWallpaperPreview(item) }
                                 )
-                            )
-                        } else if (targetState.ordinal < initialState.ordinal) {
-                            // Backward (Collections [1] -> All Wallpapers [0]): moving left
-                            (slideInHorizontally(
-                                animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
-                                initialOffsetX = { -(it * 0.30f).toInt() }
-                            ) + scaleIn(
-                                animationSpec = ExpressiveMotion.DefaultSpatialFloat,
-                                initialScale = 0.94f
-                            ) + fadeIn(
-                                animationSpec = ExpressiveMotion.DefaultEffectsFloat
-                            )).togetherWith(
-                                slideOutHorizontally(
-                                    animationSpec = ExpressiveMotion.DefaultSpatialIntOffset,
-                                    targetOffsetX = { (it * 0.30f).toInt() }
-                                ) + scaleOut(
-                                    animationSpec = ExpressiveMotion.DefaultSpatialFloat,
-                                    targetScale = 0.94f
-                                ) + fadeOut(
-                                    animationSpec = ExpressiveMotion.DefaultEffectsFloat
-                                )
-                            )
-                        } else {
-                            fadeIn(animationSpec = ExpressiveMotion.DefaultEffectsFloat) togetherWith
-                                    fadeOut(animationSpec = ExpressiveMotion.DefaultEffectsFloat)
-                        }
-                    },
-                    label = "HomeContentTransition",
-                    modifier = Modifier.fillMaxSize()
-                ) { currentTab ->
-                    when (currentTab) {
-                        HomeNavigationTab.COLLECTIONS -> {
-                            if (uiState.directories.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            Icons.Default.Folder,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(56.dp),
-                                            tint = colors.primaryAccent
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
-                                            "No collections detected",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = colors.textPrimary
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            "Add folders under assets/wallpapers/",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = colors.textSecondary
-                                        )
-                                    }
-                                }
-                            } else {
-                                LazyVerticalGrid(
-                                    state = collectionsGridState,
-                                    columns = GridCells.Fixed(2),
-                                    contentPadding = PaddingValues(top = 14.dp, bottom = bottomClearance),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    items(
-                                        items = uiState.directories,
-                                        key = { it.id },
-                                        contentType = { "collection_card" }
-                                    ) { directory ->
-                                        CollectionArtCard(
-                                            directory = directory,
-                                            colors = colors,
-                                            onClick = { onDirectorySelect(directory) }
-                                        )
-                                    }
-                                }
                             }
                         }
-                        HomeNavigationTab.ALL_WALLPAPERS -> {
-                            val allItems = uiState.allLocalWallpapers
-                            if (allItems.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("No wallpapers available.", color = colors.textSecondary)
-                                }
-                            } else {
-                                val sessionSeed = rememberSaveable { kotlin.random.Random.nextLong() }
 
-                                val spotlightWallpapers = remember(uiState.directories, allItems, sessionSeed) {
-                                    if (allItems.isEmpty()) {
-                                        emptyList()
-                                    } else {
-                                        val rng = kotlin.random.Random(sessionSeed)
-                                        val sampledFromDirs = uiState.directories.mapNotNull { dir ->
-                                            if (dir.items.isNotEmpty()) {
-                                                dir.items.random(rng)
-                                            } else {
-                                                dir.coverItem
-                                            }
-                                        }.shuffled(rng)
-
-                                        if (sampledFromDirs.isNotEmpty()) {
-                                            sampledFromDirs.take(7)
-                                        } else {
-                                            allItems.shuffled(rng).take(7)
-                                        }
-                                    }
-                                }
-
-                                LazyVerticalGrid(
-                                    state = allWallpapersGridState,
-                                    columns = GridCells.Fixed(2),
-                                    contentPadding = PaddingValues(top = 14.dp, bottom = bottomClearance),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.fillMaxSize()
-                                ) {
-                                    if (spotlightWallpapers.isNotEmpty()) {
-                                        item(
-                                            span = { GridItemSpan(2) },
-                                            key = "home_featured_spotlight_carousel",
-                                            contentType = "featured_spotlight_carousel"
-                                        ) {
-                                            FeaturedSpotlightCarousel(
-                                                items = spotlightWallpapers,
-                                                colors = colors,
-                                                onWallpaperClick = { item -> onWallpaperPreview(item) }
-                                            )
-                                        }
-                                    }
-
-                                    items(
-                                        items = allItems,
-                                        key = { it.id },
-                                        contentType = { "wallpaper_card" }
-                                    ) { item ->
-                                        CleanWallpaperCard(
-                                            item = item,
-                                            colors = colors,
-                                            onClick = { onWallpaperPreview(item) }
-                                        )
-                                    }
-                                }
-                            }
+                        items(
+                            items = allItems,
+                            key = { it.id },
+                            contentType = { "wallpaper_card" }
+                        ) { item ->
+                            CleanWallpaperCard(
+                                item = item,
+                                colors = colors,
+                                onClick = { onWallpaperPreview(item) }
+                            )
                         }
                     }
                 }
@@ -817,7 +488,7 @@ fun HomeScreen(
         if (uiState.selectedDirectory == null) {
             val fabBottomPadding = (maxHeight * 0.25f - 26.dp).coerceIn(120.dp, 240.dp)
             AnimatedVisibility(
-                visible = uiState.homeTab == HomeNavigationTab.ALL_WALLPAPERS && !isScrollingDown,
+                visible = !isScrollingDown,
                 enter = scaleIn(
                     animationSpec = ExpressiveMotion.FastSpatialFloat,
                     initialScale = 0.3f
@@ -993,15 +664,16 @@ fun FeaturedSpotlightCarousel(
 
     val pagerState = rememberPagerState(pageCount = { items.size })
 
-    // Auto-advance every 5.0s when user is not manually scrolling
-    LaunchedEffect(pagerState) {
+    // Auto-advance every 5.0s when user is not manually scrolling, paused during drag
+    LaunchedEffect(pagerState, items.size) {
+        if (items.size <= 1) return@LaunchedEffect
         while (true) {
             delay(5000L)
-            if (!pagerState.isScrollInProgress && items.size > 1) {
+            if (!pagerState.isScrollInProgress) {
                 val next = (pagerState.currentPage + 1) % items.size
                 pagerState.animateScrollToPage(
                     page = next,
-                    animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing)
+                    animationSpec = ExpressiveMotion.SlowSpatialFloat
                 )
             }
         }
@@ -1016,62 +688,56 @@ fun FeaturedSpotlightCarousel(
         HorizontalPager(
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 28.dp),
-            pageSpacing = 16.dp,
+            pageSpacing = 12.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(360.dp)
+                .height(380.dp)
         ) { page ->
             val item = items[page]
             val rawOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
-            val pageOffset = rawOffset.absoluteValue.coerceIn(0f, 1f)
+            val absOffset = rawOffset.absoluteValue.coerceIn(0f, 1f)
 
-            // Dynamic 3D depth, scale, alpha, and inner parallax
-            val cardScale = lerp(0.90f, 1.0f, 1f - pageOffset)
-            val cardAlpha = lerp(0.65f, 1.0f, 1f - pageOffset)
-            val cardRotationY = (rawOffset.coerceIn(-1f, 1f)) * -12f
-            val cardElevation = (4f + 18f * (1f - pageOffset)).dp
+            // Android 17 Pixel M3 Expressive Hero Carousel: scale down peeking cards and morph corner radius
+            val cardScale = lerp(0.88f, 1.0f, 1f - absOffset)
+            val cardCornerRadius = (20f + 8f * (1f - absOffset)).dp.coerceAtLeast(0.dp)
+            val cardElevation = (2f + 12f * (1f - absOffset)).dp
 
             FeaturedSpotlightItemCard(
                 item = item,
                 colors = colors,
                 cardScale = cardScale,
-                cardAlpha = cardAlpha,
-                cardRotationY = cardRotationY,
+                cardCornerRadius = cardCornerRadius,
                 cardElevation = cardElevation,
                 rawOffset = rawOffset,
                 onClick = { onWallpaperClick(item) }
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Dynamic Pill Page Indicators
+        // Fluid Morphing Page Indicators
         if (items.size > 1) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
                 modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
             ) {
+                val currentPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction
                 repeat(items.size) { index ->
-                    val isSelected = pagerState.currentPage == index
-                    val pillWidth by animateDpAsState(
-                        targetValue = if (isSelected) 24.dp else 7.dp,
-                        animationSpec = ExpressiveMotion.FastSpatialDp,
-                        label = "SpotlightPillWidth"
-                    )
-                    val pillAlpha by animateFloatAsState(
-                        targetValue = if (isSelected) 1.0f else 0.30f,
-                        animationSpec = ExpressiveMotion.FastEffectsFloat,
-                        label = "SpotlightPillAlpha"
-                    )
+                    val distance = (currentPosition - index).absoluteValue
+                    val factor = (1f - distance).coerceIn(0f, 1f)
+                    val dotWidth = (8f + 16f * factor).dp
+                    val activeColor = if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.primary
+                    val inactiveColor = if (colors.isGlassmorphism) Color(0x35FFFFFF) else MaterialTheme.colorScheme.surfaceContainerHighest
+                    val dotColor = colorLerp(inactiveColor, activeColor, factor)
 
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 3.dp)
-                            .height(6.5.dp)
-                            .width(pillWidth)
-                            .clip(RoundedCornerShape(3.5.dp))
-                            .background(colors.primaryAccent.copy(alpha = pillAlpha))
+                            .height(8.dp)
+                            .width(dotWidth)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(dotColor)
                     )
                 }
             }
@@ -1084,8 +750,7 @@ private fun FeaturedSpotlightItemCard(
     item: WallpaperItem,
     colors: AxWhavenColors,
     cardScale: Float,
-    cardAlpha: Float,
-    cardRotationY: Float,
+    cardCornerRadius: androidx.compose.ui.unit.Dp,
     cardElevation: androidx.compose.ui.unit.Dp,
     rawOffset: Float,
     onClick: () -> Unit
@@ -1099,23 +764,41 @@ private fun FeaturedSpotlightItemCard(
         label = "SpotlightPressScale"
     )
 
-    val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 32.dp else 26.dp,
+    val pressCornerBonus by animateDpAsState(
+        targetValue = if (isPressed) 4.dp else 0.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
-        label = "SpotlightCornerRadius"
+        label = "SpotlightCornerBonus"
     )
 
-    val shape = RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))
+    val shape = RoundedCornerShape((cardCornerRadius + pressCornerBonus).coerceAtLeast(0.dp))
+
+    // Softly pulsing primary dot for Material You spotlight pill
+    val infiniteTransition = rememberInfiniteTransition(label = "SpotlightPulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.80f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "SpotlightDotScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.60f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "SpotlightDotAlpha"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                cameraDistance = 14f * density
-                rotationY = cardRotationY
                 scaleX = cardScale * pressScale
                 scaleY = cardScale * pressScale
-                alpha = cardAlpha
             }
     ) {
         // Dynamic soft ambient glow shadow behind the active card
@@ -1146,13 +829,7 @@ private fun FeaturedSpotlightItemCard(
                             Brush.verticalGradient(listOf(Color(0x80FFFFFF), Color(0x20FFFFFF))),
                             shape
                         )
-                    } else {
-                        Modifier.border(
-                            1.dp,
-                            colors.cardBorder.copy(alpha = 0.45f),
-                            shape
-                        )
-                    }
+                    } else Modifier // Zero border in M3 Expressive
                 )
                 .clickable(
                     interactionSource = interactionSource,
@@ -1166,7 +843,9 @@ private fun FeaturedSpotlightItemCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            translationX = rawOffset * 32.dp.toPx()
+                            translationX = rawOffset * 48.dp.toPx()
+                            scaleX = 1.15f
+                            scaleY = 1.15f
                         }
                 ) {
                     WallpaperImage(
@@ -1178,80 +857,119 @@ private fun FeaturedSpotlightItemCard(
                     )
                 }
 
-                // Minimal soft vignette overlay so the spotlight badge pops cleanly
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color(0x35000000),
-                                    0.25f to Color.Transparent,
-                                    0.80f to Color.Transparent,
-                                    1.0f to Color(0x40000000)
-                                )
-                            )
-                        )
-                )
-
-                // Top-left: Minimal Glassmorphic Spotlight Chip
+                // Top-Left: Tonal Material You "• SPOTLIGHT" Pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(50))
                         .background(
                             if (colors.isGlassmorphism) Color(0x600B0E1E)
-                            else Color(0xB8000000)
+                            else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.90f)
                         )
-                        .border(
-                            0.8.dp,
-                            if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
-                            RoundedCornerShape(12.dp)
+                        .then(
+                            if (colors.isGlassmorphism) {
+                                Modifier.border(0.8.dp, Color(0x75FFFFFF), RoundedCornerShape(50))
+                            } else Modifier
                         )
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(7.dp)
+                                .graphicsLayer {
+                                    scaleX = pulseScale
+                                    scaleY = pulseScale
+                                    alpha = pulseAlpha
+                                }
                                 .clip(CircleShape)
-                                .background(colors.primaryAccent)
+                                .background(
+                                    if (colors.isGlassmorphism) colors.primaryAccent
+                                    else MaterialTheme.colorScheme.primary
+                                )
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "SPOTLIGHT",
-                            color = Color.White,
-                            fontSize = 10.5.sp,
+                            color = if (colors.isGlassmorphism) Color.White
+                            else MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.ExtraBold,
                             letterSpacing = 1.sp
                         )
                     }
                 }
 
-                // Bottom-right: Minimalist Tap-to-Preview Icon Chip
+                // Bottom Overlay Bar with subtle gradient scrim, collection/character title, and 44dp squircle action button
+                val displayTitle = if (item.directoryName.isNotBlank()) item.directoryName else item.title
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(14.dp)
-                        .clip(CircleShape)
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
                         .background(
-                            if (colors.isGlassmorphism) Color(0x600B0E1E)
-                            else Color(0xB8000000)
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to Color.Transparent,
+                                    0.35f to Color(0x50000000),
+                                    1.0f to Color(0xDD000000)
+                                )
+                            )
                         )
-                        .border(
-                            0.8.dp,
-                            if (colors.isGlassmorphism) Color(0x75FFFFFF) else Color(0x35FFFFFF),
-                            CircleShape
-                        )
-                        .padding(8.dp)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "Preview",
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp)
+                        ) {
+                            Text(
+                                text = displayTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Featured Art",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.80f),
+                                maxLines = 1
+                            )
+                        }
+
+                        // 44.dp expressive squircle action button
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (colors.isGlassmorphism) colors.primaryAccent
+                                    else MaterialTheme.colorScheme.primaryContainer
+                                )
+                                .then(
+                                    if (colors.isGlassmorphism) {
+                                        Modifier.border(1.dp, Color(0x80FFFFFF), RoundedCornerShape(14.dp))
+                                    } else Modifier
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "Explore",
+                                tint = if (colors.isGlassmorphism) colors.primaryAccentText
+                                else MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1460,7 +1178,7 @@ fun CleanWallpaperCard(
     )
 
     val cardCornerRadius by animateDpAsState(
-        targetValue = if (isPressed) 28.dp else 22.dp,
+        targetValue = if (isPressed) 28.dp else 20.dp,
         animationSpec = ExpressiveMotion.FastSpatialDp,
         label = "CardCorner"
     )
@@ -1503,50 +1221,6 @@ fun CleanWallpaperCard(
                 alignment = Alignment.TopCenter,
                 modifier = Modifier.fillMaxSize()
             )
-
-            // Subtle bottom vignette scrim for text legibility
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color.Transparent,
-                                0.70f to Color.Transparent,
-                                1.0f to Color(0x8A000000)
-                            )
-                        )
-                    )
-            )
-
-            // Subtle bottom collection pill badge
-            if (item.directoryName.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (colors.isGlassmorphism) Color(0x750B0E1E)
-                            else Color(0xB3000000)
-                        )
-                        .border(
-                            0.6.dp,
-                            if (colors.isGlassmorphism) Color(0x45FFFFFF) else Color(0x25FFFFFF),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = item.directoryName,
-                        color = Color.White,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
         }
     }
 }

@@ -48,6 +48,7 @@ import com.axwhaven.walls.model.PrimaryAppTab
 import com.axwhaven.walls.model.WallpaperItem
 import com.axwhaven.walls.ui.components.AxWhavenBottomNavBar
 import com.axwhaven.walls.ui.components.WallpaperImage
+import com.axwhaven.walls.ui.screens.CollectionsScreen
 import com.axwhaven.walls.ui.screens.HavenSurfScreen
 import com.axwhaven.walls.ui.screens.HomeScreen
 import com.axwhaven.walls.ui.screens.SettingsScreen
@@ -81,7 +82,7 @@ class MainActivity : ComponentActivity() {
             // On other tabs, folders, or previews, back returns to the previous state/screen.
             val canGoBack = activePreviewItem != null ||
                     uiState.isFilterSheetVisible ||
-                    (uiState.currentTab == PrimaryAppTab.HOME && uiState.selectedDirectory != null) ||
+                    uiState.selectedDirectory != null ||
                     uiState.currentTab != PrimaryAppTab.HOME ||
                     tabNavigationHistory.size > 1
 
@@ -93,7 +94,7 @@ class MainActivity : ComponentActivity() {
                     uiState.isFilterSheetVisible -> {
                         vm.setFilterSheetVisible(false)
                     }
-                    uiState.currentTab == PrimaryAppTab.HOME && uiState.selectedDirectory != null -> {
+                    uiState.selectedDirectory != null -> {
                         vm.selectDirectory(null)
                     }
                     tabNavigationHistory.size > 1 -> {
@@ -270,7 +271,7 @@ class MainActivity : ComponentActivity() {
                                                 tabNavigationHistory.add(tab)
                                             }
                                             vm.selectPrimaryTab(tab)
-                                        } else if (tab == PrimaryAppTab.HOME && uiState.selectedDirectory != null) {
+                                        } else if (uiState.selectedDirectory != null) {
                                             vm.selectDirectory(null)
                                         }
                                     }
@@ -338,10 +339,16 @@ class MainActivity : ComponentActivity() {
                                         HomeScreen(
                                             uiState = uiState,
                                             colors = colors,
-                                            onTabSelect = vm::selectHomeTab,
-                                            onDirectorySelect = vm::selectDirectory,
                                             onWallpaperPreview = { item -> activePreviewItem = item },
                                             onRollDie = vm::rollRandomDie
+                                        )
+                                    }
+                                    PrimaryAppTab.COLLECTIONS -> {
+                                        CollectionsScreen(
+                                            uiState = uiState,
+                                            colors = colors,
+                                            onDirectorySelect = vm::selectDirectory,
+                                            onWallpaperPreview = { item -> activePreviewItem = item }
                                         )
                                     }
                                     PrimaryAppTab.HAVEN_SURF -> {

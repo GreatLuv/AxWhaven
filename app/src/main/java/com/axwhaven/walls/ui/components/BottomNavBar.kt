@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -98,7 +99,7 @@ fun AxWhavenBottomNavBar(
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             contentAlignment = Alignment.CenterStart
         ) {
-            val totalTabs = 3
+            val totalTabs = 4
             val tabWidth = maxWidth / totalTabs
             val activeTabIndex = currentTab.ordinal
 
@@ -114,7 +115,7 @@ fun AxWhavenBottomNavBar(
                 colors.primaryAccent.copy(alpha = 0.14f)
             }
 
-            // Smooth horizontal sliding indicator pill across the 3 bottom tabs with liquid stretch
+            // Smooth horizontal sliding indicator pill across the 4 bottom tabs with liquid stretch
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -157,6 +158,16 @@ fun AxWhavenBottomNavBar(
                     isSelected = currentTab == PrimaryAppTab.HOME,
                     colors = colors,
                     onClick = { onTabSelect(PrimaryAppTab.HOME) },
+                    modifier = Modifier.weight(1f)
+                )
+
+                NavBarItem(
+                    tab = PrimaryAppTab.COLLECTIONS,
+                    icon = Icons.Default.Folder,
+                    label = "Collections",
+                    isSelected = currentTab == PrimaryAppTab.COLLECTIONS,
+                    colors = colors,
+                    onClick = { onTabSelect(PrimaryAppTab.COLLECTIONS) },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -263,7 +274,7 @@ fun NavBarItem(
                     isPressed = false
                 }
             }
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 2.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -275,7 +286,7 @@ fun NavBarItem(
                 contentDescription = label,
                 tint = animatedIconColor,
                 modifier = Modifier
-                    .size(21.dp)
+                    .size(20.dp)
                     .offset { IntOffset(0, iconOffsetY.roundToPx()) }
                     .graphicsLayer {
                         scaleX = iconPopAnimatable.value
@@ -287,14 +298,14 @@ fun NavBarItem(
                 // Reserved layout width for ExtraBold text guarantees tabs never shift/reflow
                 Text(
                     text = label,
-                    fontSize = 11.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.Transparent,
                     maxLines = 1
                 )
                 Text(
                     text = label,
-                    fontSize = 11.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight(animatedTextWeight.coerceIn(1, 1000)),
                     color = animatedTextColor,
                     maxLines = 1,

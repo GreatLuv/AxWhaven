@@ -98,6 +98,7 @@ data class ArtDirectory(
 
 enum class PrimaryAppTab(val title: String) {
     HOME("Home"),
+    COLLECTIONS("Collections"),
     HAVEN_SURF("AxW Surf"),
     SETTINGS("Settings")
 }

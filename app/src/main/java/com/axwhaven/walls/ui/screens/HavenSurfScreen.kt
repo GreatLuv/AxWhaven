@@ -1366,9 +1366,8 @@ private fun FilterPillItem(
             .background(
                 if (isSelected) {
                     if (colors.isGlassmorphism) colors.primaryAccent else MaterialTheme.colorScheme.secondaryContainer
-                } else if (colors.isGlassmorphism) Color(0x28FFFFFF)
-                else if (colors.isExpressive) colors.surfaceContainerHigh
-                else colors.surface
+                } else if (colors.isGlassmorphism) Color(0x35FFFFFF)
+                else MaterialTheme.colorScheme.surfaceContainerHighest
             )
             .then(
                 if (colors.isGlassmorphism) {
@@ -1413,7 +1412,7 @@ private fun FilterPillItem(
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = if (isSelected) {
                     if (colors.isGlassmorphism) colors.primaryAccentText else MaterialTheme.colorScheme.onSecondaryContainer
-                } else colors.textPrimary,
+                } else if (colors.isGlassmorphism) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

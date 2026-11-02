@@ -106,7 +106,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = bottomClearance)
+            contentPadding = PaddingValues(top = 10.dp, bottom = 160.dp)
         ) {
             // =========================================================================
             // SETTINGS HEADER
@@ -898,6 +898,10 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item {
+                Spacer(modifier = Modifier.height(160.dp).navigationBarsPadding())
+            }
         }
 
         // Custom Folder Path Dialog
@@ -1228,21 +1232,28 @@ private fun ExpressiveActionButton(
     )
 
     val contentColor = when {
-        isDestructive -> Color(0xFFEF4444)
+        isDestructive -> {
+            if (colors.isGlassmorphism) Color(0xFFEF4444)
+            else if (colors.isExpressive) MaterialTheme.colorScheme.onErrorContainer
+            else Color(0xFFEF4444)
+        }
         colors.isExpressive -> colors.primaryAccent
         else -> colors.primaryAccent
     }
 
     val containerColor = when {
-        isDestructive -> if (colors.isGlassmorphism) Color(0x40EF4444) else Color(0x26EF4444)
+        isDestructive -> {
+            if (colors.isGlassmorphism) Color(0x40EF4444)
+            else if (colors.isExpressive) MaterialTheme.colorScheme.errorContainer
+            else Color(0x26EF4444)
+        }
         colors.isGlassmorphism -> Color(0x35FFFFFF)
         colors.isExpressive -> colors.surfaceContainerHigh
         else -> colors.surfaceElevated
     }
 
     val borderStroke = when {
-        isDestructive -> BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f))
-        colors.isGlassmorphism -> BorderStroke(1.dp, Color(0x60FFFFFF))
+        colors.isGlassmorphism -> BorderStroke(1.dp, if (isDestructive) Color(0xFFEF4444).copy(alpha = 0.5f) else Color(0x60FFFFFF))
         else -> null
     }
 
