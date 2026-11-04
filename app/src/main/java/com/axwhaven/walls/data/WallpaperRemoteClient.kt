@@ -350,9 +350,8 @@ class WallpaperRemoteClient(private val context: Context) {
             )
             val body = httpGet(url, headers)
             if (!body.trim().startsWith("{")) {
-                // If Pixiv returned HTML instead of JSON (e.g. login wall / challenge), fallback gracefully
-                return fetchSafebooru(if (queryText.isNotBlank()) queryText else "wallpaper", page, filters)
-                    .map { it.copy(directoryName = "Pixiv", site = ProviderSite.PIXIV) }
+                // If Pixiv returned HTML instead of JSON (e.g. login wall / challenge), return emptyList()
+                return emptyList()
             }
             val root = JSONObject(body)
             val dataArray = root.optJSONObject("body")?.optJSONObject("illustManga")?.optJSONArray("data") ?: JSONArray()
@@ -391,11 +390,9 @@ class WallpaperRemoteClient(private val context: Context) {
                     )
                 }
             }
-            if (items.isNotEmpty()) items else fetchSafebooru(if (queryText.isNotBlank()) queryText else "wallpaper", page, filters)
-                .map { it.copy(directoryName = "Pixiv", site = ProviderSite.PIXIV) }
+            items
         } catch (e: Exception) {
-            fetchSafebooru(if (queryText.isNotBlank()) queryText else "wallpaper", page, filters)
-                .map { it.copy(directoryName = "Pixiv", site = ProviderSite.PIXIV) }
+            emptyList()
         }
     }
 
@@ -415,8 +412,7 @@ class WallpaperRemoteClient(private val context: Context) {
             )
             val body = httpGet(url, headers)
             if (!body.trim().startsWith("{")) {
-                return fetchSafebooru(if (queryText.isNotBlank()) queryText else "anime", page, filters)
-                    .map { it.copy(directoryName = "Anime-Pictures", site = ProviderSite.ANIME_PICTURES) }
+                return emptyList()
             }
             val root = JSONObject(body)
             val posts = root.optJSONArray("posts") ?: JSONArray()
@@ -444,11 +440,9 @@ class WallpaperRemoteClient(private val context: Context) {
                     )
                 }
             }
-            if (items.isNotEmpty()) items else fetchSafebooru(if (queryText.isNotBlank()) queryText else "anime", page, filters)
-                .map { it.copy(directoryName = "Anime-Pictures", site = ProviderSite.ANIME_PICTURES) }
+            items
         } catch (e: Exception) {
-            fetchSafebooru(if (queryText.isNotBlank()) queryText else "anime", page, filters)
-                .map { it.copy(directoryName = "Anime-Pictures", site = ProviderSite.ANIME_PICTURES) }
+            emptyList()
         }
     }
 
@@ -499,11 +493,9 @@ class WallpaperRemoteClient(private val context: Context) {
                     )
                 )
             }
-            if (items.isNotEmpty()) items else fetchSafebooru(if (queryText.isNotBlank()) queryText else "all", page, filters)
-                .map { it.copy(directoryName = "Gelbooru", site = ProviderSite.GELBOORU) }
+            items
         } catch (e: Exception) {
-            fetchSafebooru(if (queryText.isNotBlank()) queryText else "all", page, filters)
-                .map { it.copy(directoryName = "Gelbooru", site = ProviderSite.GELBOORU) }
+            emptyList()
         }
     }
 
