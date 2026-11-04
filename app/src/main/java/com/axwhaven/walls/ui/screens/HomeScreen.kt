@@ -433,28 +433,7 @@ fun HomeScreen(
                         Text("No wallpapers available.", color = colors.textSecondary)
                     }
                 } else {
-                    val sessionSeed = rememberSaveable { kotlin.random.Random.nextLong() }
-
-                    val spotlightWallpapers = remember(uiState.directories, allItems, sessionSeed) {
-                        if (allItems.isEmpty()) {
-                            emptyList()
-                        } else {
-                            val rng = kotlin.random.Random(sessionSeed)
-                            val sampledFromDirs = uiState.directories.mapNotNull { dir ->
-                                if (dir.items.isNotEmpty()) {
-                                    dir.items.random(rng)
-                                } else {
-                                    dir.coverItem
-                                }
-                            }.shuffled(rng)
-
-                            if (sampledFromDirs.isNotEmpty()) {
-                                sampledFromDirs.take(7)
-                            } else {
-                                allItems.shuffled(rng).take(7)
-                            }
-                        }
-                    }
+                    val spotlightWallpapers = uiState.spotlightWallpapers
 
                     LazyVerticalGrid(
                         state = allWallpapersGridState,
@@ -857,27 +836,6 @@ private fun FeaturedSpotlightItemCard(
 
     val shape = RoundedCornerShape((cardCornerRadius + pressCornerBonus).coerceAtLeast(0.dp))
 
-    // Softly pulsing primary dot for Material You spotlight pill
-    val infiniteTransition = rememberInfiniteTransition(label = "SpotlightPulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.80f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "SpotlightDotScale"
-    )
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.60f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "SpotlightDotAlpha"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -949,50 +907,6 @@ private fun FeaturedSpotlightItemCard(
                         alignment = Alignment.TopCenter,
                         modifier = Modifier.fillMaxSize()
                     )
-                }
-
-                // Top-Left: Tonal Material You "• SPOTLIGHT" Pill
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(16.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            if (colors.isGlassmorphism) Color(0x600B0E1E)
-                            else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.90f)
-                        )
-                        .then(
-                            if (colors.isGlassmorphism) {
-                                Modifier.border(0.8.dp, Color(0x75FFFFFF), RoundedCornerShape(50))
-                            } else Modifier
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .graphicsLayer {
-                                    scaleX = pulseScale
-                                    scaleY = pulseScale
-                                    alpha = pulseAlpha
-                                }
-                                .clip(CircleShape)
-                                .background(
-                                    if (colors.isGlassmorphism) colors.primaryAccent
-                                    else MaterialTheme.colorScheme.primary
-                                )
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "SPOTLIGHT",
-                            color = if (colors.isGlassmorphism) Color.White
-                            else MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 1.sp
-                        )
-                    }
                 }
 
                 // Bottom Overlay Bar with subtle gradient scrim, collection/character title, and 44dp squircle action button

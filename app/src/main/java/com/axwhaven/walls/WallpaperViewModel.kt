@@ -34,6 +34,7 @@ data class WallpaperUiState(
     // Home Screen State
     val homeTab: HomeNavigationTab = HomeNavigationTab.ALL_WALLPAPERS,
     val directories: List<ArtDirectory> = emptyList(),
+    val spotlightWallpapers: List<WallpaperItem> = emptyList(),
     val selectedDirectory: ArtDirectory? = null,
 
     // Haven Surf (Online Discovery) State
@@ -86,14 +87,24 @@ class WallpaperViewModel(
 
     private val prefs = context.getSharedPreferences("axwhaven_settings", Context.MODE_PRIVATE)
 
-    private val _uiState = MutableStateFlow(
-        WallpaperUiState(
-            directories = storageRepo.getInitialDirectories(),
-            activeStorageDesc = storageRepo.getActiveLocationDescription(),
-            isUsingDefaultStorage = storageRepo.isUsingDefaultLocation(),
-            defaultStorageWallpapersCount = storageRepo.getDefaultWallpapersCount()
+    // Session-wide persistent Spotlight cards (frozen on app launch, never re-rolled on tab switch)
+    private var sessionSpotlightWallpapers: List<WallpaperItem>? = null
+    private var hasInitializedSpotlight = false
+
+    private val _uiState: MutableStateFlow<WallpaperUiState> = run {
+        val initialDirs = storageRepo.getInitialDirectories()
+        val initialSpotlight = generateDynamicSpotlight(initialDirs)
+        sessionSpotlightWallpapers = if (initialSpotlight.isNotEmpty()) initialSpotlight else null
+        MutableStateFlow(
+            WallpaperUiState(
+                directories = initialDirs,
+                spotlightWallpapers = initialSpotlight,
+                activeStorageDesc = storageRepo.getActiveLocationDescription(),
+                isUsingDefaultStorage = storageRepo.isUsingDefaultLocation(),
+                defaultStorageWallpapersCount = storageRepo.getDefaultWallpapersCount()
+            )
         )
-    )
+    }
     val uiState: StateFlow<WallpaperUiState> = _uiState.asStateFlow()
     val isReady: StateFlow<Boolean> get() = _isReady
     private val _isReady = MutableStateFlow(false)
@@ -179,14 +190,149 @@ class WallpaperViewModel(
             val dirs = storageRepo.loadAllDirectories()
             val currentSelectedId = _uiState.value.selectedDirectory?.id
             val updatedSelected = dirs.find { it.id == currentSelectedId }
+
+            // Freeze spotlight on initial cold start load of all directories (including Download Vault)
+            if (!hasInitializedSpotlight) {
+                val fullSpotlight = generateDynamicSpotlight(dirs)
+                if (fullSpotlight.isNotEmpty()) {
+                    sessionSpotlightWallpapers = fullSpotlight
+                }
+                hasInitializedSpotlight = true
+            }
+
             _uiState.value = _uiState.value.copy(
                 directories = dirs,
+                spotlightWallpapers = sessionSpotlightWallpapers.orEmpty(),
                 selectedDirectory = updatedSelected,
                 activeStorageDesc = storageRepo.getActiveLocationDescription(),
                 isUsingDefaultStorage = storageRepo.isUsingDefaultLocation(),
                 defaultStorageWallpapersCount = storageRepo.getDefaultWallpapersCount()
             )
         }
+    }
+
+    /**
+     * Generates an 8-card Hero Spotlight carousel lineup according to the Dynamic Weightage Policy:
+     * - Target count: Exactly 8 cards.
+     * - Minimum allocation: Every active directory gets at least 1 card when possible.
+     * - Dynamic weightage threshold: When any directory contains > 10 wallpapers (e.g. Download Vault or large collection),
+     *   its quota scales dynamically up to half the spotlight cards (max 4 cards, min 1 card).
+     * - Balanced representation: Remaining slots (6 down to 4) are distributed fairly across other active directories.
+     * - Distinct items: Guarantees unique wallpapers across all cards.
+     */
+    private fun generateDynamicSpotlight(directories: List<ArtDirectory>): List<WallpaperItem> {
+        val activeDirs = directories.filter { it.items.isNotEmpty() }
+        if (activeDirs.isEmpty()) {
+            val allLocal = directories.flatMap { it.items }
+            return allLocal.distinctBy { it.id }.shuffled().take(8)
+        }
+
+        val totalSlots = 8
+        val rng = kotlin.random.Random.Default
+
+        val largeDirs = activeDirs.filter { it.items.size > 10 }
+        val smallDirs = activeDirs.filter { it.items.size <= 10 }
+
+        val quotas = mutableMapOf<String, Int>()
+
+        if (largeDirs.isNotEmpty()) {
+            // Calculate dynamic bonus quota for large directories (capped at max 4 cards each)
+            var remainingSlots = totalSlots
+            val largeDirBonus = mutableMapOf<String, Int>()
+
+            for (dir in largeDirs.sortedByDescending { it.items.size }) {
+                val count = dir.items.size
+                val desiredQuota = when {
+                    count > 30 -> 4
+                    count in 19..30 -> 3
+                    else -> 2 // 11..18
+                }.coerceAtMost(count).coerceAtMost(4)
+
+                // Leave at least min(1, otherDirsCount) slots so other collections are not completely excluded
+                val otherDirsCount = (largeDirs.size - 1) + smallDirs.size
+                val maxAllowed = (remainingSlots - otherDirsCount.coerceAtMost(remainingSlots - 1)).coerceAtLeast(1)
+                val finalQuota = desiredQuota.coerceAtMost(maxAllowed).coerceIn(1, 4)
+
+                largeDirBonus[dir.id] = finalQuota
+                remainingSlots = (remainingSlots - finalQuota).coerceAtLeast(0)
+            }
+
+            quotas.putAll(largeDirBonus)
+
+            // Distribute remaining slots among other active directories (1 card each, sampled/shuffled)
+            val remainingDirs = (smallDirs + largeDirs.filter { !quotas.containsKey(it.id) }).shuffled(rng)
+            for (dir in remainingDirs) {
+                if (remainingSlots <= 0) break
+                quotas[dir.id] = (quotas[dir.id] ?: 0) + 1
+                remainingSlots--
+            }
+
+            // If slots still remain, give to largest directories up to max 4
+            if (remainingSlots > 0) {
+                for (dir in activeDirs.sortedByDescending { it.items.size }) {
+                    if (remainingSlots <= 0) break
+                    val current = quotas[dir.id] ?: 0
+                    val maxForThis = dir.items.size.coerceAtMost(4)
+                    if (current < maxForThis) {
+                        val add = (maxForThis - current).coerceAtMost(remainingSlots)
+                        quotas[dir.id] = current + add
+                        remainingSlots -= add
+                    }
+                }
+            }
+        } else {
+            // Standard baseline: all directories <= 10 items
+            // Distribute 1 card each across active directories
+            val shuffledDirs = activeDirs.shuffled(rng)
+            var remainingSlots = totalSlots
+            for (dir in shuffledDirs) {
+                if (remainingSlots <= 0) break
+                quotas[dir.id] = 1
+                remainingSlots--
+            }
+            // If total active directories < 8, assign remaining slots to directories with more items (up to 4 max)
+            if (remainingSlots > 0) {
+                for (dir in activeDirs.sortedByDescending { it.items.size }) {
+                    if (remainingSlots <= 0) break
+                    val current = quotas[dir.id] ?: 0
+                    val maxForThis = dir.items.size.coerceAtMost(4)
+                    if (current < maxForThis) {
+                        val add = (maxForThis - current).coerceAtMost(remainingSlots)
+                        quotas[dir.id] = current + add
+                        remainingSlots -= add
+                    }
+                }
+            }
+        }
+
+        // Sample distinct wallpapers from each directory according to its allocated quota
+        val chosenWallpapers = mutableListOf<WallpaperItem>()
+        val usedIds = mutableSetOf<String>()
+
+        for (dir in activeDirs) {
+            val quota = quotas[dir.id] ?: 0
+            if (quota > 0) {
+                val available = dir.items.filter { it.id !in usedIds }.shuffled(rng)
+                val picked = available.take(quota)
+                for (item in picked) {
+                    usedIds.add(item.id)
+                    chosenWallpapers.add(item)
+                }
+                if (picked.size < quota) {
+                    val fallback = dir.items.shuffled(rng).take(quota - picked.size)
+                    chosenWallpapers.addAll(fallback)
+                }
+            }
+        }
+
+        // If total < 8, pad with any remaining distinct local wallpapers
+        if (chosenWallpapers.size < totalSlots) {
+            val allItems = directories.flatMap { it.items }.filter { it.id !in usedIds }.shuffled(rng)
+            val padding = allItems.take(totalSlots - chosenWallpapers.size)
+            chosenWallpapers.addAll(padding)
+        }
+
+        return chosenWallpapers.distinctBy { it.id }.take(totalSlots).shuffled(rng)
     }
 
     fun setCustomStoragePath(pathStr: String) {
