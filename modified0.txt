@@ -1,0 +1,274 @@
+# AxWhaven Master Refinement & Home Page UI Redesign Report
+
+Date: 2026-11-02
+Environment: Linux Termux Android SDK 37 (Kotlin 2.1+, Jetpack Compose BOM 2026.05.01)
+
+---
+
+## 1. Overview of Modifications
+
+Based on user requests and online research into modern mobile wallpaper app hero carousels and Material 3 Expressive design tokens:
+1. **Dynamic Fresh-Start Character Rotation:**
+   - Instead of static, hardcoded folder covers always starting with the same image in alphabetical order, the spotlight carousel now picks a **new, diversified anime wallpaper set on every fresh start of the app**.
+   - Leverages `rememberSaveable { kotlin.random.Random.nextLong() }` so each new cold start / app launch generates a unique session seed, while remaining stable across screen rotations and in-session scrolling.
+   - Randomly samples distinct artwork from each curated character collection (`Alya`, `Asuka`, `Kurumi`, `Lumine`, `Miku`, `Random`, `Saber`) and shuffles their order, ensuring users are greeted by different characters and wallpapers on every launch.
+2. **Material 3 Expressive Motion & Squircle Morphing:**
+   - Incorporated Material 3 Expressive physics-based spatial springs (`ExpressiveMotion.FastSpatialDp`, `dampingRatio = 0.6f`, `stiffness = 800f`) on the spotlight card, creating organic corner radius morphing (`26.dp` resting to `32.dp` pressed).
+   - Paired with spring-based press scaling (`0.97f`), 3D hardware perspective tilt (`rotationY = cardRotationY`, `cameraDistance = 14f * density`), inner horizontal parallax motion (`translationX = rawOffset * 32.dp.toPx()`), and dynamic primary accent ambient glow elevation (`4.dp` to `22.dp`).
+3. **Pure Uncluttered Artwork Presentation:**
+   - Removed wallpaper file name, character name tag, and surprise button from the spotlight card.
+   - Removed the "Anime Portfolios" banner from the Collections tab.
+   - Zero functionality regressions across the entire app.
+
+---
+
+## 2. Detailed File Modifications
+
+### A. `app/src/main/java/com/axwhaven/walls/ui/screens/HomeScreen.kt`
+1. **Fresh-Start Session Randomization:**
+   - Added `rememberSaveable` session seed: `val sessionSeed = rememberSaveable { kotlin.random.Random.nextLong() }`.
+   - Seeded deterministic RNG: `val rng = kotlin.random.Random(sessionSeed)`.
+   - Sampled diverse wallpapers from each character folder: `dir.items.random(rng)` and shuffled with `shuffled(rng).take(7)`.
+2. **Material 3 Expressive Corner Morphing (`FeaturedSpotlightItemCard`):**
+   - Implemented squircle corner morphing with `ExpressiveMotion.FastSpatialDp`:
+     `cardCornerRadius by animateDpAsState(targetValue = if (isPressed) 32.dp else 26.dp, animationSpec = ExpressiveMotion.FastSpatialDp)`.
+   - Shape: `RoundedCornerShape(cardCornerRadius.coerceAtLeast(0.dp))`.
+3. **3D Parallax & Ambient Glow:**
+   - Maintained hardware-accelerated 3D tilt (`rotationY = (rawOffset.coerceIn(-1f, 1f)) * -12f`) with `cameraDistance = 14f * density`.
+   - Draw-phase inner wallpaper translation: `translationX = rawOffset * 32.dp.toPx()`.
+   - Dynamic ambient glow shadow layer: `elevation = (4f + 18f * (1f - pageOffset)).dp` with `colors.primaryAccent`.
+4. **Collections Grid Simplicity:**
+   - Completely removed `CollectionsOverviewBanner` from the Collections tab, giving immediate clean access to character folders.
+
+### B. `app/src/main/java/com/axwhaven/walls/ui/components/WallpaperImage.kt`
+1. **Top-Center Alignment Support:**
+   - Added `alignment: Alignment = Alignment.Center` parameter to `WallpaperImage` with passthrough to `SubcomposeAsyncImage`.
+2. **Headers & Skeleton Shimmer:**
+   - Centralized image headers to `ProviderSite.defaultReferer()` and `ProviderSite.imageUserAgent()`.
+   - Isolated shimmer animation in `ImageLoadingSkeleton`.
+   - Added cached thumbnail fallback preview during streaming.
+
+### C. `app/src/main/java/com/axwhaven/walls/ui/screens/HavenSurfScreen.kt`
+1. **Online Result Card Coherence (`HavenSurfResultCard`):**
+   - Standardized aspect ratio to `0.64f` (modern mobile smartphone ratio).
+   - Set resting corner radius to `22.dp` (morphing to `28.dp` pressed).
+   - Added `alignment = Alignment.TopCenter` to `WallpaperImage`.
+2. **Hygiene:**
+   - Explicit `key` and `contentType` on suggestions row.
+   - Suppressed deprecated `settings.databaseEnabled`.
+
+### D. `app/src/main/java/com/axwhaven/walls/data/WallpaperStorageRepository.kt`
+1. Added `@file:OptIn(coil.annotation.ExperimentalCoilApi::class)` for Coil disk cache snapshot access.
+
+### E. `app/src/main/java/com/axwhaven/walls/ui/screens/SettingsScreen.kt`
+1. Standardized bottom padding to universal `FloatingDockClearance = 150.dp` token.
+2. Removed trailing redundant `Spacer` item.
+3. Cleaned up unused import.
+
+### F. `app/src/main/java/com/axwhaven/walls/ui/theme/Theme.kt`
+1. Suppressed legacy system bar color deprecations while maintaining edge-to-edge transparent system bars.
+
+---
+
+## 3. Strict Verification & Build Validation
+
+1. **Debug APK Build:**
+   - Command: `studio build . :app:assembleDebug`
+   - Result: `BUILD SUCCESSFUL in 54s` (0 errors, 0 compiler warnings)
+   - Output: `app/build/outputs/apk/debug/app-debug.apk` (66MB)
+
+2. **Clean Release APK Build:**
+   - Command: `studio build . clean :app:assembleRelease`
+   - Result: `BUILD SUCCESSFUL in 1m 9s` (0 errors, 0 compiler warnings)
+   - Output: `app/build/outputs/apk/release/AxWhaven_1.0.apk` (59MB)
+
+3. **Certificate Signature Verification:**
+   - Command: `apksigner verify --print-certs AxWhaven_1.0.apk`
+   - Certificate SHA-256 Digest: `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified exact match)
+
+4. **Zero Functionality Regression:**
+   - Offline gallery browsing and folder drill-down: Fully intact.
+   - Dice button & target selection modal (Home, Lock, Both): Fully intact via floating standalone dice button.
+   - Full-screen wallpaper preview, pinch-zoom, and wallpaper applier: Fully intact.
+   - Bottom floating dock clearance (`150.dp`): Fully intact across all screens.
+
+
+---
+
+## 4. Phase 13: 4-Tab Navigation, M3 Expressive Hero Carousel, Clean Wallpaper Grid, and High-Contrast Filters
+
+Date: 2026-11-02
+Environment: Linux Termux Android SDK 37 (Kotlin 2.1+, Jetpack Compose BOM 2026.05.01)
+
+### A. Architectural & Navigation Upgrades
+1. **4-Tab Floating Dock Navigation (`Models.kt`, `BottomNavBar.kt`, `MainActivity.kt`):**
+   - Added `COLLECTIONS("Collections")` to `PrimaryAppTab` at index 1: `HOME (0)`, `COLLECTIONS (1)`, `HAVEN_SURF (2)`, `SETTINGS (3)`.
+   - Updated `totalTabs = 4`, added `Icons.Default.Folder` tab icon, and set tab horizontal padding to `2.dp` with `11.sp` labels to ensure zero layout jitter or text wrapping.
+   - Preserved elastic sliding pill indicator, spring icon pop (`1.15f -> 1.0f`), emphasized `FontWeight.ExtraBold` typography, directional `ExpressiveMotion.DefaultSpatial` transitions, and `HapticFeedbackType.TextHandleMove` haptics.
+2. **Dedicated Collections Screen (`CollectionsScreen.kt`):**
+   - Built a dedicated screen featuring a top Collections header with folder icon, title, and total folders badge (`"${uiState.directories.size} folders"`).
+   - Shows collection art cards in a 2-column grid (`CollectionArtCard`), and supports collection folder drill-down with back navigation button.
+   - Clears floating dock via universal `FloatingDockClearance = 150.dp`.
+
+### B. Clean "All Wallpapers" Grid Cards (`HomeScreen.kt`)
+1. **Unobstructed Artwork (`CleanWallpaperCard`):**
+   - Removed bottom collection/directory text label pill and dark vignette gradient scrim from individual wallpaper cards in the `All Wallpapers` grid.
+   - Full unobstructed image rendering with `RoundedCornerShape` press morphing: `20.dp` resting to `28.dp` pressed, guarded with `.coerceAtLeast(0.dp)`.
+   - Preserved collection badges and "Explore →" chips exclusively on `CollectionsScreen.kt`.
+
+### C. Android 17 Google Pixel Material 3 Expressive Hero Carousel (`HomeScreen.kt`)
+1. **Peeking Layout & Continuous Parallax (`FeaturedSpotlightCarousel`):**
+   - Configured `HorizontalPager` with `contentPadding = PaddingValues(horizontal = 28.dp)` and `pageSpacing = 12.dp` for centered active hero and peeking adjacent cards.
+   - Calculated continuous `pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction` to animate:
+     - Scale down peeking cards: `lerp(0.88f, 1.0f, 1f - pageOffset.absoluteValue.coerceIn(0f, 1f))`.
+     - Corner radius morphing: `(20f + 8f * (1f - absOffset)).dp.coerceAtLeast(0.dp)` (active 28.dp hero <-> peeking 20.dp side cards).
+     - Internal image parallax: `translationX = rawOffset * 48.dp.toPx()` with `1.15f` scale inside `graphicsLayer`.
+2. **Smart 5-Second Auto-Advance with Expressive Spring:**
+   - Fresh-start session randomization via `rememberSaveable { kotlin.random.Random.nextLong() }`.
+   - Pauses 5-second auto-advance whenever `pagerState.isScrollInProgress` is `true` (user touch/drag).
+   - Animates page transition using `animateScrollToPage(nextPage, animationSpec = ExpressiveMotion.SlowSpatialFloat)` (`dampingRatio = 0.8f, stiffness = 200f`).
+3. **Tonal Material You Overlays:**
+   - Top-Left `"• SPOTLIGHT"` Pill: Styled with `MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.90f)` in `RoundedCornerShape(50)`, `onSecondaryContainer` bold text, and a softly pulsing `MaterialTheme.colorScheme.primary` dot (`infiniteTransition` alpha & scale pulse).
+   - Bottom Overlay Bar: Subtle bottom gradient scrim with collection/character title in `titleMedium` bold white and a `44.dp` squircle action button (`RoundedCornerShape(14.dp)`, `primaryContainer`, `onPrimaryContainer` `→` icon).
+4. **Fluid Morphing Page Indicator:**
+   - Real-time continuous interpolation using `pagerState.currentPageOffsetFraction`: active pill (`24.dp` wide, `primary`) smoothly stretches and morphs into circular dots (`8.dp` wide, `surfaceContainerHighest`).
+
+### D. Scroll-Up Vanish Behavior with Spotlight (`HomeScreen.kt`)
+1. Top `AxWhaven` branding header bar and standalone 5-pip Dice button smoothly collapse and vanish on scroll-down (`!isScrollingDown`).
+2. Spotlight carousel is placed as a `span = { GridItemSpan(maxLineSpan) }` header item inside the `LazyVerticalGrid`, allowing it to scroll naturally up with the wallpaper grid.
+
+### E. Filter Sheet Contrast & Settings Bottom Clearance (`HavenSurfScreen.kt` & `SettingsScreen.kt`)
+1. **High-Contrast Unselected Filter Chips (`HavenSurfScreen.kt`):**
+   - Unselected chips in `Search Filters` bottom sheet now use `MaterialTheme.colorScheme.surfaceContainerHighest` fill with `onSurfaceVariant` text, making all 12.dp squircle chip containers visible against `surfaceContainerLow` background.
+2. **Settings Bottom Clearance (`SettingsScreen.kt`):**
+   - Configured `LazyColumn(contentPadding = PaddingValues(top = 10.dp, bottom = 160.dp))` and added trailing `Spacer(modifier = Modifier.height(160.dp).navigationBarsPadding())` so the About card scrolls well above the floating navigation bar.
+   - Styled destructive "Uninstall AxWhaven..." button with `MaterialTheme.colorScheme.errorContainer` background and `onErrorContainer` text/icon.
+
+### F. Verification & Build Validation
+1. **Debug APK Build:**
+   - Command: `studio build . :app:assembleDebug`
+   - Result: `BUILD SUCCESSFUL in 59s` (0 errors)
+   - Output: `app/build/outputs/apk/debug/app-debug.apk` (66MB)
+2. **Clean Release APK Build:**
+   - Command: `studio build . clean :app:assembleRelease`
+   - Result: `BUILD SUCCESSFUL in 1m 10s` (0 errors)
+   - Output: `app/build/outputs/apk/release/AxWhaven_1.0.apk` (59MB)
+3. **Certificate Signature Verification:**
+   - Command: `apksigner verify --print-certs AxWhaven_1.0.apk`
+   - Certificate SHA-256 Digest: `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Exact match confirmed)
+
+
+---
+
+## 5. Phase 7: Android 17 / Pixel-Inspired Material 3 Expressive Upgrade (3D Cover Flow Carousel & Zero-Overlap Audit)
+
+Date: 2026-11-02
+Environment: Linux Termux Android SDK 37 (Kotlin 2.1+, Jetpack Compose BOM 2026.05.01)
+
+### A. 3D Perspective Tilt Spotlight Carousel (`HomeScreen.kt`)
+1. **Pager Configuration:**
+   - Compose `HorizontalPager` configured with `contentPadding = PaddingValues(horizontal = 48.dp)` and `pageSpacing = (-16).dp`.
+   - Negative page spacing creates a controlled 16 dp physical overlap with adjacent cards partially visible on both sides.
+2. **Continuous 3D Cover Flow Geometry:**
+   - `pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction`.
+   - `safeOffset = pageOffset.coerceIn(-1f, 1f)`.
+   - `centerProgress = (1f - kotlin.math.abs(safeOffset)).coerceIn(0f, 1f)`.
+   - Inward rotation: `rotationY = safeOffset * 18f` (Left card tilts +18 deg, Center card 0 deg, Right card tilts -18 deg).
+   - Scale interpolation: `scaleX = lerp(0.90f, 1.0f, centerProgress)` and `scaleY = lerp(0.85f, 1.0f, centerProgress)`.
+   - Opacity: `alpha = lerp(0.75f, 1.0f, centerProgress)`.
+   - Dynamic corner radius: `(20f + 8f * centerProgress).dp.coerceAtLeast(0.dp)`.
+   - Dynamic ambient glow elevation: `(2f + 14f * centerProgress).dp`.
+3. **Camera & Depth Safety:**
+   - Transform origin: `TransformOrigin.Center`.
+   - Dynamic camera distance: `cameraDistance = if (cardWidth > 0f) (cardWidth * 2.5f).coerceIn(1200f, 6000f) else (12f * density).coerceIn(1200f, 6000f)`.
+   - Z-ordering: `Modifier.zIndex(centerProgress)` ensures active card draws above overlapping adjacent cards.
+   - Parallax: `translationX = safeOffset * 36.dp.toPx()`, inner wallpaper scale `1.15f`.
+4. **Auto-Advance & Lifecycle Safety:**
+   - 5-second automatic advancement pauses during user touches/drags (`!pagerState.isScrollInProgress`).
+   - Automatically pauses when the screen/app is inactive or backgrounded via `LifecycleEventObserver`.
+   - Respects system reduced-motion and animation duration scale (`Settings.Global.ANIMATOR_DURATION_SCALE`).
+   - Zero haptics during automatic advancement.
+5. **Interactive Controls & Accessibility:**
+   - Tap on adjacent card animates it into active center position.
+   - Clickable morphing page indicators.
+   - TalkBack accessibility semantics (`selected = isCurrentPage`, `role = Role.Tab`).
+
+### B. Standardized Zero-Overlap Clearance (`ThemeConfig.kt`, all 4 screens)
+1. **Centralized Token:**
+   - Defined `MainScreenBottomClearance: Dp = 150.dp` (with `FloatingDockClearance = MainScreenBottomClearance`).
+2. **Scrolling Containers Audit:**
+   - Home (`HomeScreen.kt`): Main wallpaper grid uses `bottom = MainScreenBottomClearance`; folder drilldown uses `bottom = MainScreenBottomClearance`.
+   - Collections (`CollectionsScreen.kt`): Collections grid uses `bottom = MainScreenBottomClearance`; folder drilldown uses `bottom = MainScreenBottomClearance`.
+   - AxW Surf (`HavenSurfScreen.kt`): Online result grid uses `bottom = MainScreenBottomClearance`.
+   - Settings (`SettingsScreen.kt`): LazyColumn uses `bottom = MainScreenBottomClearance` with trailing `Spacer(modifier = Modifier.height(MainScreenBottomClearance).navigationBarsPadding())`.
+   - Last item in all 4 destinations is guaranteed to scroll at least 150 dp above bottom of the screen, leaving generous clearance above the floating dock.
+
+### C. Build Validation
+1. **Debug Build:** `studio build . :app:assembleDebug` -> `BUILD SUCCESSFUL in 1m 2s`.
+2. **Release Build:** `studio build . clean :app:assembleRelease` -> `BUILD SUCCESSFUL in 1m 13s`.
+3. **Unit Tests:** `studio build . :app:testDebugUnitTest` -> `BUILD SUCCESSFUL in 18s`.
+4. **Signature Verification:** `apksigner verify --print-certs AxWhaven_1.0.apk` -> Certificate SHA-256 Digest `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified exact match).
+
+
+---
+
+## Modification: AxW Surf Provider Cross-Site Fallback Removal & End-of-Pages Fix
+
+### A. Provider Isolation & Bug Fix (`WallpaperRemoteClient.kt`)
+1. **Gelbooru (`fetchGelbooru`):**
+   - Removed unwanted fallback to `fetchSafebooru(...)` when reaching the end of available pages or on scraper exception.
+   - Now directly returns `items` (which evaluates to an empty list `emptyList()` when all available pages have been read).
+   - In catch block, returns `emptyList()` without falling back to Safebooru.
+   - Enables `WallpaperViewModel` pagination logic (`canLoadMore = newItems.isNotEmpty()`) to detect `canLoadMore = false` when reaching the final page, displaying the clean M3 Expressive "Reached final page" state instead of displaying Safebooru images.
+2. **Pixiv (`fetchPixiv`):**
+   - Removed fallback calls to `fetchSafebooru(...)` on non-JSON response (e.g. login wall), on empty search result / end of pages, and in exception catch block.
+   - Now safely returns `emptyList()`, preventing Safebooru images from masquerading as Pixiv artworks.
+3. **Anime-Pictures (`fetchAnimePictures`):**
+   - Removed fallback calls to `fetchSafebooru(...)` on non-JSON response, on empty posts array / end of pages, and in exception catch block.
+   - Now safely returns `emptyList()`, maintaining provider isolation.
+4. **All Other Providers Verified:**
+   - Wallhaven, Moebooru (Yande.re, Konachan), Danbooru, and Safebooru itself were verified to have 100% provider isolation without any cross-site substitutions.
+
+### B. Build Validation & Verification
+1. **Debug Build:** `studio build . :app:assembleDebug` -> `BUILD SUCCESSFUL in 29s`.
+2. **Unit Tests:** `studio build . :app:testDebugUnitTest` -> `BUILD SUCCESSFUL in 11s`.
+3. **Release Build:** `studio build . clean :app:assembleRelease` -> `BUILD SUCCESSFUL in 1m 6s`.
+4. **Signature Verification:** `apksigner verify --print-certs AxWhaven_1.0.apk` -> Certificate SHA-256 Digest `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified).
+
+
+---
+
+## Modification: Spotlight 8-Card Dynamic Weightage Policy, Session-Wide Persistence, and Tag Removal
+
+### A. Dynamic Weightage Policy (`WallpaperViewModel.kt`)
+1. **Target Count & Minimum Allocation:**
+   - Evaluates active local directories to populate exactly **8 Spotlight cards**.
+   - Every active non-empty directory is guaranteed representation with at least 1 card when possible.
+2. **Dynamic Weighting Threshold (> 10 items):**
+   - When any directory (such as the Download Vault or a large collection) exceeds 10 wallpapers, its quota scales dynamically up to half the carousel cards (capped at max 4 cards, min 1 card):
+     - 11 to 18 wallpapers $\to$ 2 cards.
+     - 19 to 30 wallpapers $\to$ 3 cards.
+     - $> 30$ wallpapers $\to$ 4 cards (50% max quota cap).
+3. **Fair Rotation Across Other Collections:**
+   - Remaining slots (from 6 down to 4) are distributed fairly across other directories with distinct, non-duplicate wallpaper items.
+   - Preserves collection diversity while giving proper proportional weight to larger libraries like user downloads.
+
+### B. Session-Wide Persistence & Reshuffle Bug Fix (`WallpaperViewModel.kt` & `HomeScreen.kt`)
+1. **Root Cause Resolved:**
+   - Previously calculated inside `HomeScreen.kt` composition using `remember(uiState.directories, allItems, sessionSeed)`, causing the carousel to re-sample whenever tabs were switched in `AnimatedContent` or whenever `directories` updated.
+2. **ViewModel Hoisting:**
+   - Moved `spotlightWallpapers: List<WallpaperItem>` directly into `WallpaperUiState`.
+   - Initialized once on cold start via `generateDynamicSpotlight(initialDirs)` and locked into `sessionSpotlightWallpapers` upon completing the initial directory scan.
+   - The spotlight cards remain 100% frozen and stable across all tab switches, theme changes, downloads, and background transitions. A new spotlight lineup is generated exclusively upon a fresh app launch (cold start).
+
+### C. Spotlight Card Decluttering (`HomeScreen.kt`)
+1. **Tag Pill Removed:**
+   - Removed the top-left `"• SPOTLIGHT"` pulsing badge overlay from `FeaturedSpotlightItemCard`.
+   - Removed the continuous infinite pulsing animation (`pulseScale`, `pulseAlpha`) in the card, boosting rendering performance and battery efficiency while giving the 3D Cover Flow artwork a clean, distraction-free appearance.
+   - Bottom gradient scrim with title and squircle Explore button remains intact.
+
+### D. Build & Verification
+1. **Debug Build:** `studio build . :app:assembleDebug` -> `BUILD SUCCESSFUL in 1m 1s`.
+2. **Unit Tests:** `studio build . :app:testDebugUnitTest` -> `BUILD SUCCESSFUL in 11s`.
+3. **Release Build:** `studio build . clean :app:assembleRelease` -> `BUILD SUCCESSFUL in 1m 12s`.
+4. **Signature Verification:** `apksigner verify --print-certs AxWhaven_1.0.apk` -> Certificate SHA-256 Digest `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified).
