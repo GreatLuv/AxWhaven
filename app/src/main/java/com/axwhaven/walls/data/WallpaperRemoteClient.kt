@@ -26,6 +26,14 @@ class WallpaperRemoteClient(private val context: Context) {
         get() = prefs.getString("danbooru_cookie", null)
         set(value) = prefs.edit().putString("danbooru_cookie", value).apply()
 
+    var danbooruLogin: String?
+        get() = prefs.getString("danbooru_login", null)?.takeIf { it.isNotBlank() }
+        set(value) = prefs.edit().putString("danbooru_login", value).apply()
+
+    var danbooruApiKey: String?
+        get() = prefs.getString("danbooru_api_key", null)?.takeIf { it.isNotBlank() }
+        set(value) = prefs.edit().putString("danbooru_api_key", value).apply()
+
     suspend fun queryWallpapers(
         provider: ProviderSite,
         queryText: String,
@@ -89,7 +97,7 @@ class WallpaperRemoteClient(private val context: Context) {
                         sorted
                     }
                 }
-                ProviderSite.SAFEBOORU, ProviderSite.GELBOORU -> {
+                ProviderSite.SAFEBOORU, ProviderSite.GELBOORU, ProviderSite.DANBOORU -> {
                     val url = "https://safebooru.org/autocomplete.php?q=${urlEncode(queryWord)}"
                     val body = httpGet(url)
                     val array = JSONArray(body)
@@ -135,13 +143,6 @@ class WallpaperRemoteClient(private val context: Context) {
                             "$queryWord 4k"
                         )
                     }
-                }
-                else -> {
-                    listOf(
-                        queryWord,
-                        "$queryWord anime",
-                        "$queryWord scenery"
-                    )
                 }
             }
         }.getOrDefault(emptyList())
@@ -500,7 +501,7 @@ class WallpaperRemoteClient(private val context: Context) {
     }
 
     // 7. Danbooru
-    private fun fetchDanbooru(queryText: String, page: Int, filters: HavenSurfFilterState): List<WallpaperItem> {
+    private suspend fun fetchDanbooru(queryText: String, page: Int, filters: HavenSurfFilterState): List<WallpaperItem> {
         return try {
             val tags = mutableListOf<String>()
             if (queryText.isNotBlank()) tags.addAll(queryText.trim().split(Regex("\\s+")).filter { it.isNotBlank() })
@@ -510,8 +511,45 @@ class WallpaperRemoteClient(private val context: Context) {
                 ContentRating.NSFW -> tags.add("rating:e")
                 ContentRating.ALL -> Unit
             }
-            val url = "https://danbooru.donmai.us/posts.json?limit=40&page=$page&tags=${urlEncode(tags.joinToString(" "))}"
-            val body = httpGet(url, mapOf("Referer" to "https://danbooru.donmai.us/"))
+            val baseQuery = "limit=40&page=$page&tags=${urlEncode(tags.joinToString(" "))}"
+            val hasAuth = !danbooruLogin.isNullOrBlank() && !danbooruApiKey.isNullOrBlank()
+
+            val url = if (hasAuth) {
+                "https://danbooru.donmai.us/posts.json?$baseQuery&login=${urlEncode(danbooruLogin!!)}&api_key=${urlEncode(danbooruApiKey!!)}"
+            } else {
+                "https://danbooru.donmai.us/posts.json?$baseQuery"
+            }
+
+            val body: String = if (hasAuth) {
+                val basicAuth = "Basic " + android.util.Base64.encodeToString(
+                    "${danbooruLogin}:${danbooruApiKey}".toByteArray(),
+                    android.util.Base64.NO_WRAP
+                )
+                val authHeaders = mapOf(
+                    "Authorization" to basicAuth,
+                    "Referer" to "https://danbooru.donmai.us/posts",
+                    "User-Agent" to "AxWhaven/1.1.0 (by $danbooruLogin on danbooru)"
+                )
+                try {
+                    httpGet(url, authHeaders)
+                } catch (e: Exception) {
+                    DanbooruBridge.fetchJson(context, url)
+                }
+            } else {
+                try {
+                    DanbooruBridge.fetchJson(context, url)
+                } catch (bridgeErr: Exception) {
+                    try {
+                        httpGet(url, mapOf("Referer" to "https://danbooru.donmai.us/posts"))
+                    } catch (httpErr: Exception) {
+                        throw IllegalStateException(
+                            "Danbooru requires verification or API key. Tap key icon to authenticate.",
+                            bridgeErr
+                        )
+                    }
+                }
+            }
+
             val array = JSONArray(body)
             val items = mutableListOf<WallpaperItem>()
             for (i in 0 until array.length()) {
@@ -572,10 +610,13 @@ class WallpaperRemoteClient(private val context: Context) {
             items
         } catch (e: Exception) {
             val isCf = e.message?.contains("403") == true ||
+                e.message?.contains("503") == true ||
                 e.message?.contains("Cloudflare", ignoreCase = true) == true ||
-                e.message?.contains("Just a moment", ignoreCase = true) == true
+                e.message?.contains("Just a moment", ignoreCase = true) == true ||
+                e.message?.contains("timed out", ignoreCase = true) == true ||
+                e.message?.contains("verification", ignoreCase = true) == true
             if (isCf) {
-                throw IllegalStateException("Danbooru requires Cloudflare verification or cookie. Tap to pass cookie.", e)
+                throw IllegalStateException("Danbooru requires verification or API key. Tap key icon to authenticate.", e)
             } else {
                 throw e
             }
@@ -600,16 +641,11 @@ class WallpaperRemoteClient(private val context: Context) {
         val userAgent = runCatching {
             android.webkit.WebSettings.getDefaultUserAgent(context)
         }.getOrNull()?.takeIf { it.isNotBlank() }
-            ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
-
-        val domainUrl = when {
-            urlString.contains("danbooru.donmai.us") -> "https://danbooru.donmai.us"
-            urlString.contains("konachan.com") -> "https://konachan.com"
-            else -> urlString
-        }
+            ?: "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
 
         val cookie = runCatching {
-            android.webkit.CookieManager.getInstance().getCookie(domainUrl)
+            android.webkit.CookieManager.getInstance().flush()
+            android.webkit.CookieManager.getInstance().getCookie(urlString)
         }.getOrNull()
 
         val savedKonachanCookie = if (urlString.contains("konachan.com")) konachanCookie else null
@@ -621,10 +657,8 @@ class WallpaperRemoteClient(private val context: Context) {
             connectTimeout = 12_000
             readTimeout = 15_000
             setRequestProperty("User-Agent", userAgent)
-            setRequestProperty("Accept", "application/json, text/plain, text/html, */*")
+            setRequestProperty("Accept", "application/json, text/plain, */*")
             setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-            setRequestProperty("Sec-CH-UA-Mobile", "?1")
-            setRequestProperty("Sec-CH-UA-Platform", "\"Android\"")
             if (urlString.contains("danbooru.donmai.us")) {
                 setRequestProperty("Referer", "https://danbooru.donmai.us/posts")
             } else if (urlString.contains("konachan.com")) {

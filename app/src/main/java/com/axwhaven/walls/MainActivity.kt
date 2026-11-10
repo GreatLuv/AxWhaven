@@ -370,6 +370,7 @@ class MainActivity : ComponentActivity() {
                                             onDismissKonachanCookieDialog = vm::dismissKonachanCookieDialog,
                                             onOpenKonachanCookieDialog = vm::openKonachanCookieDialog,
                                             onSaveDanbooruCookie = vm::saveDanbooruCookie,
+                                            onSaveDanbooruAuth = vm::saveDanbooruAuth,
                                             onDismissDanbooruCookieDialog = vm::dismissDanbooruCookieDialog,
                                             onOpenDanbooruCookieDialog = vm::openDanbooruCookieDialog
                                         )

@@ -62,9 +62,11 @@ data class WallpaperUiState(
     val showKonachanCookieDialog: Boolean = false,
     val konachanCookieText: String = "",
 
-    // Danbooru Cookie Bypass Dialog
+    // Danbooru Cookie Bypass & Auth Dialog
     val showDanbooruCookieDialog: Boolean = false,
     val danbooruCookieText: String = "",
+    val danbooruLogin: String = "",
+    val danbooruApiKey: String = "",
 
     // Storage & Download Directory
     val activeStorageDesc: String = "",
@@ -130,6 +132,8 @@ class WallpaperViewModel(
         val savedBlurRadius = prefs.getFloat("key_bg_blur_radius", 25f)
         val savedKonachanCookie = prefs.getString("konachan_cookie", "") ?: ""
         val savedDanbooruCookie = prefs.getString("danbooru_cookie", "") ?: ""
+        val savedDanbooruLogin = prefs.getString("danbooru_login", "") ?: ""
+        val savedDanbooruApiKey = prefs.getString("danbooru_api_key", "") ?: ""
 
         _uiState.value = _uiState.value.copy(
             currentTheme = loadedTheme,
@@ -139,7 +143,9 @@ class WallpaperViewModel(
             appBackgroundItem = savedAppBg,
             backgroundBlurRadius = savedBlurRadius,
             konachanCookieText = savedKonachanCookie,
-            danbooruCookieText = savedDanbooruCookie
+            danbooruCookieText = savedDanbooruCookie,
+            danbooruLogin = savedDanbooruLogin,
+            danbooruApiKey = savedDanbooruApiKey
         )
 
         refreshLocalDirectories()
@@ -509,18 +515,20 @@ class WallpaperViewModel(
                 val isDanbooruError = provider == ProviderSite.DANBOORU &&
                     (err.message?.contains("Cloudflare", ignoreCase = true) == true ||
                      err.message?.contains("cookie", ignoreCase = true) == true ||
-                     err.message?.contains("403", ignoreCase = true) == true)
+                     err.message?.contains("403", ignoreCase = true) == true ||
+                     err.message?.contains("503", ignoreCase = true) == true ||
+                     err.message?.contains("verification", ignoreCase = true) == true)
 
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     isLoadingMore = false,
                     statusMessage = when {
-                        isKonachanError -> "Konachan NSFW requires verification. Tap to pass cookie."
-                        isDanbooruError -> "Danbooru requires verification. Tap to pass cookie."
+                        isKonachanError -> "Konachan NSFW requires verification. Tap key icon to pass cookie."
+                        isDanbooruError -> "Danbooru requires verification or API key. Tap key icon to authenticate."
                         else -> "Search error: ${err.localizedMessage}"
                     },
-                    showKonachanCookieDialog = isKonachanError,
-                    showDanbooruCookieDialog = isDanbooruError
+                    showKonachanCookieDialog = false,
+                    showDanbooruCookieDialog = false
                 )
             }
         }
@@ -529,7 +537,9 @@ class WallpaperViewModel(
     fun openDanbooruCookieDialog() {
         _uiState.value = _uiState.value.copy(
             showDanbooruCookieDialog = true,
-            danbooruCookieText = prefs.getString("danbooru_cookie", "") ?: ""
+            danbooruCookieText = prefs.getString("danbooru_cookie", "") ?: "",
+            danbooruLogin = prefs.getString("danbooru_login", "") ?: "",
+            danbooruApiKey = prefs.getString("danbooru_api_key", "") ?: ""
         )
     }
 
@@ -537,18 +547,30 @@ class WallpaperViewModel(
         _uiState.value = _uiState.value.copy(showDanbooruCookieDialog = false)
     }
 
-    fun saveDanbooruCookie(cookie: String) {
+    fun saveDanbooruAuth(cookie: String, login: String = "", apiKey: String = "") {
         runCatching {
             android.webkit.CookieManager.getInstance().flush()
         }
-        remoteClient.danbooruCookie = cookie
-        prefs.edit().putString("danbooru_cookie", cookie).apply()
+        remoteClient.danbooruCookie = cookie.trim()
+        remoteClient.danbooruLogin = login.trim()
+        remoteClient.danbooruApiKey = apiKey.trim()
+        prefs.edit()
+            .putString("danbooru_cookie", cookie.trim())
+            .putString("danbooru_login", login.trim())
+            .putString("danbooru_api_key", apiKey.trim())
+            .apply()
         _uiState.value = _uiState.value.copy(
-            danbooruCookieText = cookie,
+            danbooruCookieText = cookie.trim(),
+            danbooruLogin = login.trim(),
+            danbooruApiKey = apiKey.trim(),
             showDanbooruCookieDialog = false,
-            statusMessage = "Danbooru cookie saved!"
+            statusMessage = "Danbooru configuration saved!"
         )
         executeHavenSurfSearch(isNewSearch = true)
+    }
+
+    fun saveDanbooruCookie(cookie: String) {
+        saveDanbooruAuth(cookie, _uiState.value.danbooruLogin, _uiState.value.danbooruApiKey)
     }
 
     fun openKonachanCookieDialog() {

@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -79,6 +80,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.axwhaven.walls.WallpaperUiState
+import com.axwhaven.walls.data.DanbooruBridge
 import com.axwhaven.walls.model.*
 import com.axwhaven.walls.ui.components.M3ExpressiveMorphingLoader
 import com.axwhaven.walls.ui.components.WallpaperImage
@@ -115,6 +117,7 @@ fun HavenSurfScreen(
     onDismissKonachanCookieDialog: () -> Unit = {},
     onOpenKonachanCookieDialog: () -> Unit = {},
     onSaveDanbooruCookie: (String) -> Unit = {},
+    onSaveDanbooruAuth: (cookie: String, login: String, apiKey: String) -> Unit = { _, _, _ -> },
     onDismissDanbooruCookieDialog: () -> Unit = {},
     onOpenDanbooruCookieDialog: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -866,9 +869,12 @@ fun HavenSurfScreen(
                 providerName = "Danbooru",
                 verificationUrl = "https://danbooru.donmai.us/posts",
                 cookieDomain = "https://danbooru.donmai.us",
-                infoText = "Danbooru is protected by Cloudflare Turnstile anti-bot challenge. Complete verification in the in-app browser or paste your cookie to search:",
+                infoText = "Danbooru is protected by Cloudflare Turnstile anti-bot challenge. Complete verification in the in-app browser or enter your API credentials to search:",
                 currentCookie = uiState.danbooruCookieText,
+                currentLogin = uiState.danbooruLogin,
+                currentApiKey = uiState.danbooruApiKey,
                 onSaveCookie = onSaveDanbooruCookie,
+                onSaveAuth = onSaveDanbooruAuth,
                 onDismiss = onDismissDanbooruCookieDialog,
                 colors = colors
             )
@@ -1429,12 +1435,19 @@ fun ProviderCookieDialog(
     cookieDomain: String,
     infoText: String,
     currentCookie: String,
+    currentLogin: String = "",
+    currentApiKey: String = "",
     onSaveCookie: (String) -> Unit,
+    onSaveAuth: ((cookie: String, login: String, apiKey: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     colors: AxWhavenColors
 ) {
-    var isWebViewVisible by remember { mutableStateOf(false) }
+    val isDanbooru = providerName.equals("Danbooru", ignoreCase = true)
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Browser, 1: API Key (if Danbooru)
+    var isWebViewVisible by remember { mutableStateOf(isDanbooru) }
     var cookieText by remember { mutableStateOf(currentCookie) }
+    var loginText by remember { mutableStateOf(currentLogin) }
+    var apiKeyText by remember { mutableStateOf(currentApiKey) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -1445,13 +1458,14 @@ fun ProviderCookieDialog(
             border = BorderStroke(1.dp, colors.cardBorder),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 4.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(20.dp)
             ) {
+                // Header
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -1473,13 +1487,13 @@ fun ProviderCookieDialog(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "$providerName Verification",
+                            text = "$providerName Authentication",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = colors.textPrimary
                         )
                         Text(
-                            text = "Cloudflare protection bypass",
+                            text = if (isDanbooru) "Cloudflare Turnstile & API Key" else "Cloudflare protection bypass",
                             fontSize = 12.sp,
                             color = colors.textSecondary
                         )
@@ -1496,7 +1510,126 @@ fun ProviderCookieDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                if (isWebViewVisible) {
+                // Danbooru Tab Selector: Browser Verification vs API Key
+                if (isDanbooru && onSaveAuth != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (colors.isGlassmorphism) Color(0x25FFFFFF) else colors.surfaceContainerHigh)
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selectedTab == 0) colors.primaryAccent else Color.Transparent)
+                                .clickable { selectedTab = 0 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "In-App Browser",
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedTab == 0) colors.primaryAccentText else colors.textSecondary
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selectedTab == 1) colors.primaryAccent else Color.Transparent)
+                                .clickable { selectedTab = 1 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "API Key (Zero Check)",
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selectedTab == 1) colors.primaryAccentText else colors.textSecondary
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                if (isDanbooru && selectedTab == 1 && onSaveAuth != null) {
+                    // API Key Settings
+                    Text(
+                        text = "Danbooru user accounts have free API keys that bypass Cloudflare Turnstile bot checks natively without requiring interactive verification.",
+                        fontSize = 12.sp,
+                        color = colors.textSecondary,
+                        lineHeight = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = loginText,
+                        onValueChange = { loginText = it },
+                        label = { Text("Danbooru Username", fontSize = 12.sp) },
+                        placeholder = { Text("e.g. your_username", fontSize = 11.sp, color = colors.textMuted) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primaryAccent,
+                            unfocusedBorderColor = colors.cardBorder,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = apiKeyText,
+                        onValueChange = { apiKeyText = it },
+                        label = { Text("Danbooru API Key", fontSize = 12.sp) },
+                        placeholder = { Text("Find at danbooru.donmai.us/profile", fontSize = 11.sp, color = colors.textMuted) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primaryAccent,
+                            unfocusedBorderColor = colors.cardBorder,
+                            focusedTextColor = colors.textPrimary,
+                            unfocusedTextColor = colors.textPrimary
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            border = BorderStroke(1.dp, colors.cardBorder)
+                        ) {
+                            Text("Cancel", color = colors.textSecondary)
+                        }
+
+                        Button(
+                            onClick = {
+                                onSaveAuth(cookieText.trim(), loginText.trim(), apiKeyText.trim())
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colors.primaryAccent,
+                                contentColor = colors.primaryAccentText
+                            ),
+                            modifier = Modifier.weight(1.5f).height(44.dp)
+                        ) {
+                            Text("Save & Search", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else if (isWebViewVisible) {
                     var statusNote by remember { mutableStateOf("Complete the Cloudflare verification challenge below.") }
                     var hasValidCookie by remember { mutableStateOf(false) }
 
@@ -1515,48 +1648,58 @@ fun ProviderCookieDialog(
                     ) {
                         AndroidView(
                             factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    @Suppress("DEPRECATION")
-                                    settings.databaseEnabled = true
-                                    settings.useWideViewPort = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.userAgentString = WebSettings.getDefaultUserAgent(ctx)
-                                    val cookieManager = CookieManager.getInstance()
-                                    cookieManager.setAcceptCookie(true)
-                                    cookieManager.setAcceptThirdPartyCookies(this, true)
+                                if (isDanbooru) {
+                                    val webView = DanbooruBridge.getOrCreateWebView(ctx)
+                                    (webView.parent as? ViewGroup)?.removeView(webView)
+                                    DanbooruBridge.testApiAccess { ok, _ ->
+                                        if (ok) {
+                                            hasValidCookie = true
+                                            statusNote = "✅ Verification successful! Danbooru connected."
+                                        }
+                                    }
+                                    webView
+                                } else {
+                                    WebView(ctx).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        @Suppress("DEPRECATION")
+                                        settings.databaseEnabled = true
+                                        settings.useWideViewPort = true
+                                        settings.loadWithOverviewMode = true
+                                        settings.userAgentString = runCatching {
+                                            WebSettings.getDefaultUserAgent(ctx)
+                                        }.getOrNull()
+                                        val cookieManager = CookieManager.getInstance()
+                                        cookieManager.setAcceptCookie(true)
+                                        cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                                    webViewClient = object : WebViewClient() {
-                                        override fun onPageFinished(view: WebView?, url: String?) {
-                                            super.onPageFinished(view, url)
-                                            cookieManager.flush()
-                                            val c = cookieManager.getCookie(cookieDomain)
-                                            val title = view?.title.orEmpty()
-                                            val isChallenge = title.contains("Just a moment", ignoreCase = true) ||
-                                                title.contains("Cloudflare", ignoreCase = true) ||
-                                                url?.contains("__cf_chl") == true ||
-                                                url?.contains("challenge") == true
+                                        webViewClient = object : WebViewClient() {
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                cookieManager.flush()
+                                                val c = cookieManager.getCookie(cookieDomain)
+                                                val title = view?.title.orEmpty()
+                                                val isChallenge = title.contains("Just a moment", ignoreCase = true) ||
+                                                    title.contains("Cloudflare", ignoreCase = true)
 
-                                            if (!c.isNullOrBlank() && c.contains("cf_clearance")) {
-                                                hasValidCookie = true
-                                                if (!isChallenge) {
+                                                if (!c.isNullOrBlank() && c.contains("cf_clearance") && !isChallenge) {
+                                                    hasValidCookie = true
                                                     statusNote = "Verification successful! Cookie captured."
                                                     onSaveCookie(c)
-                                                } else {
-                                                    statusNote = "Challenge active. Please complete the Turnstile checkbox."
-                                                }
-                                            } else {
-                                                statusNote = if (isChallenge) {
-                                                    "Challenge active. Please complete the Turnstile checkbox."
-                                                } else {
-                                                    "Complete the verification challenge above, then tap 'Capture & Save Cookie'."
                                                 }
                                             }
                                         }
+                                        loadUrl(verificationUrl)
                                     }
-                                    loadUrl(verificationUrl)
                                 }
+                            },
+                            update = { view ->
+                                if (view.url == null || !view.url.orEmpty().contains(if (isDanbooru) "danbooru.donmai.us" else "konachan.com")) {
+                                    view.loadUrl(verificationUrl)
+                                }
+                            },
+                            onRelease = { view ->
+                                (view.parent as? ViewGroup)?.removeView(view)
                             },
                             modifier = Modifier.fillMaxSize()
                         )
@@ -1566,11 +1709,17 @@ fun ProviderCookieDialog(
                         onClick = {
                             val cm = CookieManager.getInstance()
                             cm.flush()
-                            val c = cm.getCookie(cookieDomain).orEmpty()
-                            if (c.contains("cf_clearance") || c.isNotBlank()) {
-                                onSaveCookie(c)
+                            val targetDomain = if (isDanbooru) "https://danbooru.donmai.us/posts.json" else cookieDomain
+                            val c = cm.getCookie(targetDomain).orEmpty()
+                            if (isDanbooru) {
+                                DanbooruBridge.markCleared(true)
+                                if (onSaveAuth != null) {
+                                    onSaveAuth(c, loginText.trim(), apiKeyText.trim())
+                                } else {
+                                    onSaveCookie(c)
+                                }
                             } else {
-                                statusNote = "Challenge not yet verified. Please complete the checkbox above first."
+                                onSaveCookie(c)
                             }
                         },
                         shape = RoundedCornerShape(14.dp),
@@ -1580,7 +1729,7 @@ fun ProviderCookieDialog(
                         ),
                         modifier = Modifier.fillMaxWidth().height(44.dp)
                     ) {
-                        Text("Capture & Save Cookie", fontWeight = FontWeight.Bold)
+                        Text(if (hasValidCookie) "Continue & Search" else "Capture & Save Cookie", fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Text(
@@ -1660,7 +1809,11 @@ fun ProviderCookieDialog(
                                         CookieManager.getInstance().flush()
                                     }
                                 }
-                                onSaveCookie(trimmed)
+                                if (isDanbooru && onSaveAuth != null) {
+                                    onSaveAuth(trimmed, loginText.trim(), apiKeyText.trim())
+                                } else {
+                                    onSaveCookie(trimmed)
+                                }
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(

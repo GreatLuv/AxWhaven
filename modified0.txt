@@ -272,3 +272,45 @@ Environment: Linux Termux Android SDK 37 (Kotlin 2.1+, Jetpack Compose BOM 2026.
 2. **Unit Tests:** `studio build . :app:testDebugUnitTest` -> `BUILD SUCCESSFUL in 11s`.
 3. **Release Build:** `studio build . clean :app:assembleRelease` -> `BUILD SUCCESSFUL in 1m 12s`.
 4. **Signature Verification:** `apksigner verify --print-certs AxWhaven_1.0.apk` -> Certificate SHA-256 Digest `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified).
+
+
+---
+
+## Modification: Danbooru Cloudflare Verification Loop Fix & Chromium Bridge Architecture
+
+### A. Root Cause Analysis
+1. **Infinite Auto-Reopening Loop in `WallpaperViewModel.kt`:**
+   - In `executeHavenSurfSearch.onFailure`, when Danbooru returned HTTP 403 / Cloudflare challenge, `showDanbooruCookieDialog = isDanbooruError` was set to `true`.
+   - When the user verified via the WebView and tapped "Save & Search", the dialog dismissed and immediately executed the search. Because the raw `HttpURLConnection` failed again, `onFailure` was invoked and immediately re-opened `showDanbooruCookieDialog = true`, locking the user in a continuous verification loop.
+2. **TLS Handshake / JA3 Fingerprint Rejection:**
+   - Modern Cloudflare Turnstile cryptographically binds `cf_clearance` to the TLS ClientHello fingerprint (JA3/JA4) of the browser environment that solved the challenge.
+   - Java's `HttpURLConnection` on Android has a different TLS signature than Chromium WebView. Even with valid cookies, Cloudflare edge servers rejected Java `HttpURLConnection` with HTTP 403/503.
+3. **In-App Challenge Verification Disconnect in `HavenSurfScreen.kt`:**
+   - The verification dialog checked only `cf_clearance` and flagged `__cf_chl` URLs as an indefinite challenge, without testing whether Danbooru's `/posts.json` API was genuinely returning HTTP 200.
+
+### B. Solution Implementation
+1. **Loop Elimination (`WallpaperViewModel.kt`):**
+   - In `executeHavenSurfSearch.onFailure`, set `showDanbooruCookieDialog = false` and `showKonachanCookieDialog = false`.
+   - Updated `statusMessage` to inform the user cleanly: `"Danbooru requires verification or API key. Tap key icon to authenticate."`
+   - Added `saveDanbooruAuth(cookie, login, apiKey)` to persist auth settings and trigger clean searches without reopening dialogs.
+2. **Chromium WebView Execution Bridge (`DanbooruBridge.kt`):**
+   - Created a singleton `DanbooruBridge` running on `Dispatchers.Main` with full Chromium JavaScript, DOM storage, and cookie persistence.
+   - Executes queries via same-origin `fetch()` in Chromium with standard JSON headers and `credentials: 'include'`.
+   - Passes data back to Kotlin via `@JavascriptInterface` bridge (`AxWDanbooruBridge.onFetchSuccess`).
+   - Requests inherit genuine Chromium TLS handshakes and active session tokens (`cf_clearance`, `__cf_bm`, `_danbooru_session`).
+   - Added `testApiAccess` to test live `/posts.json?limit=1` connectivity and confirm verification.
+3. **Dual-Mode Authentication Dialog (`HavenSurfScreen.kt`):**
+   - Added top tab segmented control:
+     - **In-App Browser (Turnstile Bypass):** Embeds `DanbooruBridge` WebView. Live API health checks trigger automatic green verification status (`"✅ Verification successful! Danbooru connected."`) and single-tap continue.
+     - **API Key (Turnstile-Free):** Allows users to enter their Danbooru Username and API Key (available free at `danbooru.donmai.us/profile`).
+4. **Direct API Authentication & Resilient Fallback (`WallpaperRemoteClient.kt`):**
+   - Added `danbooruLogin` and `danbooruApiKey` preferences.
+   - When credentials are present, formats URL with `&login=...&api_key=...` and HTTP Basic Auth.
+   - When unauthenticated, queries through `DanbooruBridge.fetchJson(context, url)` with Chromium TLS, with graceful fallbacks.
+   - Added `ProviderSite.DANBOORU` to booru tag autocomplete suggestions.
+   - Cleaned up HTTP headers in `httpGet`: removed invalid client-hint headers, added proper `Accept` and `Referer` headers, and retrieved cookies scoped to `urlString`.
+
+### C. Build & Verification
+1. **Unit Tests:** `studio build . :app:testDebugUnitTest` -> `BUILD SUCCESSFUL in 55s`.
+2. **Release Build:** `studio build . :app:assembleRelease` -> `BUILD SUCCESSFUL in 2m 33s`.
+3. **APK Signing Verification:** `apksigner verify --print-certs AxWhaven_1.1.0.apk` -> Certificate SHA-256 `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` (Verified).
