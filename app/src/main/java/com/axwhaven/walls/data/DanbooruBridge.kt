@@ -17,14 +17,16 @@ import org.json.JSONObject
 /**
  * DanbooruBridge: Chromium WebView execution bridge for Danbooru.
  *
- * Cloudflare Turnstile blocks Java HttpURLConnection due to TLS handshake / JA3 fingerprinting.
+ * Cloudflare Turnstile challenges standard Java HttpURLConnection due to TLS handshake / JA3 fingerprinting.
  * By executing queries directly inside Chromium WebView via same-origin fetch(), requests inherit
- * genuine Chromium TLS signatures and active session cookies (__cf_bm, cf_clearance, _danbooru_session).
+ * genuine Chromium TLS signatures and active session cookies (__cf_bm, cf_clearance, _danbooru_session)
+ * without requiring any user API key or login credentials.
  */
 object DanbooruBridge {
 
     private var activeWebView: WebView? = null
     private var pendingFetchDeferred: CompletableDeferred<String>? = null
+    private var pageLoadedDeferred: CompletableDeferred<Unit>? = null
     private var apiCheckCallback: ((Boolean, Int) -> Unit)? = null
     private var isTurnstileCleared = false
 
@@ -40,13 +42,16 @@ object DanbooruBridge {
         fun onFetchError(error: String) {
             val deferred = pendingFetchDeferred
             pendingFetchDeferred = null
+            if (error.contains("403")) {
+                isTurnstileCleared = false
+            }
             deferred?.completeExceptionally(IllegalStateException(error))
         }
 
         @JavascriptInterface
         fun onApiCheck(status: Int) {
             val ok = status in 200..299
-            if (ok) isTurnstileCleared = true
+            isTurnstileCleared = ok
             Handler(Looper.getMainLooper()).post {
                 apiCheckCallback?.invoke(ok, status)
             }
@@ -82,6 +87,8 @@ object DanbooruBridge {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         CookieManager.getInstance().flush()
+                        pageLoadedDeferred?.complete(Unit)
+                        pageLoadedDeferred = null
                         testApiAccess()
                     }
                 }
@@ -124,9 +131,14 @@ object DanbooruBridge {
         val deferred = CompletableDeferred<String>()
         pendingFetchDeferred = deferred
 
-        // If webView is not loaded to danbooru yet, wait or trigger load
+        // If webView is not loaded to danbooru yet, wait for page load to guarantee same-origin context
         if (view.url == null || !view.url.orEmpty().contains("danbooru.donmai.us")) {
+            val loadDeferred = CompletableDeferred<Unit>()
+            pageLoadedDeferred = loadDeferred
             view.loadUrl("https://danbooru.donmai.us/posts")
+            withTimeoutOrNull(6_000) {
+                loadDeferred.await()
+            }
         }
 
         val escapedUrl = JSONObject.quote(urlString)
@@ -162,7 +174,7 @@ object DanbooruBridge {
 
         val result = withTimeoutOrNull(15_000) {
             deferred.await()
-        } ?: throw IllegalStateException("Danbooru WebView request timed out. Please verify via In-App Browser.")
+        } ?: throw IllegalStateException("Danbooru request timed out. Please complete in-app verification.")
 
         result
     }

@@ -7,3 +7,4 @@
   - Dedicated Collections screen and clean unobstructed wallpaper grid cards
   - Zero-overlap layout clearance system across all screens (`MainScreenBottomClearance = 150.dp`)
   - AxW Surf booru scraper optimizations and provider isolation (removal of cross-site fallbacks)
+  - Danbooru anonymous public access restoration: removed mandatory API key requirement and persistent tab-switch key icon, enabled seamless in-app Cloudflare captcha verification via Chromium bridge

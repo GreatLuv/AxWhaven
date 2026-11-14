@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.axwhaven.walls.data.DanbooruBridge
 import com.axwhaven.walls.data.WallpaperRemoteClient
 import com.axwhaven.walls.data.WallpaperStorageRepository
 import com.axwhaven.walls.model.*
@@ -420,6 +421,8 @@ class WallpaperViewModel(
             remoteResults = emptyList(),
             currentPage = 1,
             canLoadMore = true,
+            showDanbooruCookieDialog = false,
+            showKonachanCookieDialog = false,
             statusMessage = "Switched to ${provider.displayName}"
         )
         executeHavenSurfSearch(isNewSearch = true)
@@ -504,6 +507,7 @@ class WallpaperViewModel(
                     canLoadMore = newItems.isNotEmpty(),
                     isSearching = false,
                     isLoadingMore = false,
+                    showDanbooruCookieDialog = false,
                     statusMessage = if (isNewSearch && newItems.isEmpty()) "No artworks found on ${provider.displayName}." else null
                 )
             }.onFailure { err ->
@@ -517,18 +521,19 @@ class WallpaperViewModel(
                      err.message?.contains("cookie", ignoreCase = true) == true ||
                      err.message?.contains("403", ignoreCase = true) == true ||
                      err.message?.contains("503", ignoreCase = true) == true ||
-                     err.message?.contains("verification", ignoreCase = true) == true)
+                     err.message?.contains("verification", ignoreCase = true) == true ||
+                     err.message?.contains("captcha", ignoreCase = true) == true)
 
                 _uiState.value = _uiState.value.copy(
                     isSearching = false,
                     isLoadingMore = false,
                     statusMessage = when {
                         isKonachanError -> "Konachan NSFW requires verification. Tap key icon to pass cookie."
-                        isDanbooruError -> "Danbooru requires verification or API key. Tap key icon to authenticate."
+                        isDanbooruError -> "Danbooru requires Cloudflare verification. Complete in-app captcha to search."
                         else -> "Search error: ${err.localizedMessage}"
                     },
                     showKonachanCookieDialog = false,
-                    showDanbooruCookieDialog = false
+                    showDanbooruCookieDialog = isDanbooruError
                 )
             }
         }
@@ -537,9 +542,7 @@ class WallpaperViewModel(
     fun openDanbooruCookieDialog() {
         _uiState.value = _uiState.value.copy(
             showDanbooruCookieDialog = true,
-            danbooruCookieText = prefs.getString("danbooru_cookie", "") ?: "",
-            danbooruLogin = prefs.getString("danbooru_login", "") ?: "",
-            danbooruApiKey = prefs.getString("danbooru_api_key", "") ?: ""
+            danbooruCookieText = prefs.getString("danbooru_cookie", "") ?: ""
         )
     }
 
@@ -547,30 +550,23 @@ class WallpaperViewModel(
         _uiState.value = _uiState.value.copy(showDanbooruCookieDialog = false)
     }
 
-    fun saveDanbooruAuth(cookie: String, login: String = "", apiKey: String = "") {
+    fun saveDanbooruCookie(cookie: String) {
         runCatching {
             android.webkit.CookieManager.getInstance().flush()
         }
+        DanbooruBridge.markCleared(true)
         remoteClient.danbooruCookie = cookie.trim()
-        remoteClient.danbooruLogin = login.trim()
-        remoteClient.danbooruApiKey = apiKey.trim()
-        prefs.edit()
-            .putString("danbooru_cookie", cookie.trim())
-            .putString("danbooru_login", login.trim())
-            .putString("danbooru_api_key", apiKey.trim())
-            .apply()
+        prefs.edit().putString("danbooru_cookie", cookie.trim()).apply()
         _uiState.value = _uiState.value.copy(
             danbooruCookieText = cookie.trim(),
-            danbooruLogin = login.trim(),
-            danbooruApiKey = apiKey.trim(),
             showDanbooruCookieDialog = false,
-            statusMessage = "Danbooru configuration saved!"
+            statusMessage = "Danbooru verified!"
         )
         executeHavenSurfSearch(isNewSearch = true)
     }
 
-    fun saveDanbooruCookie(cookie: String) {
-        saveDanbooruAuth(cookie, _uiState.value.danbooruLogin, _uiState.value.danbooruApiKey)
+    fun saveDanbooruAuth(cookie: String, login: String = "", apiKey: String = "") {
+        saveDanbooruCookie(cookie)
     }
 
     fun openKonachanCookieDialog() {

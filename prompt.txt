@@ -1,0 +1,294 @@
+# AxWhaven — Complete Project Architecture & Master Refinement Prompt
+
+---
+
+## Part 1: Project Overview & Tech Stack
+
+**AxWhaven** is a native Android anime wallpaper manager built with modern Jetpack Compose. It combines bundled offline curated collections with online discovery across 8 image providers (Wallhaven, Safebooru, Danbooru, Gelbooru, Konachan, Yande.re, Anime-Pictures, and Pixiv), custom Storage Access Framework (SAF) directory management, and a unified Material 3 Expressive + Frosted Glassmorphism visual design system.
+
+### Tech Stack & Toolchain
+- **Language:** Kotlin 2.1+ (JvmTarget JVM 17)
+- **UI Toolkit:** Jetpack Compose (Compose BOM 2026.05.01, Material 3 1.4+, Material Icons Extended)
+- **Architecture:** Unidirectional Data Flow (UDF) with MVVM (`WallpaperViewModel` + `WallpaperUiState` via `StateFlow`)
+- **Image Loading:** Coil 2.7.0 (`io.coil-kt:coil-compose`) with custom multi-layer memory/disk caching and hardware bitmaps
+- **OS Compatibility:** `minSdk = 24` (Android 7.0), `compileSdk = 37`, `targetSdk = 37` (Android 17 preview / Android 15/16)
+- **Build System:** Gradle 9.8.2 / AGP 9.2.1, with AndroidX Profileinstaller 1.4.1 for Ahead-of-Time (AOT) baseline profiles
+- **Build Commands:**
+  - Debug APK: `studio build . :app:assembleDebug`
+  - Release APK: `studio build . clean :app:assembleRelease`
+  - Location: `app/build/outputs/apk/release/AxWhaven_1.0.apk` and `app/build/outputs/apk/debug/app-debug.apk`
+
+---
+
+## Part 2: Project Directory Structure
+
+```
+android-agent-work/
+├── prompt.txt                                  <-- Master architecture guide and refinement prompt
+├── AxWhaven/                                   <-- Root Android Project
+│   ├── build.gradle                            <-- Root build script (plugins: android app, kotlin compose)
+│   ├── settings.gradle                         <-- Settings file (pluginManagement & dependencyResolutionManagement)
+│   ├── gradle.properties                       <-- Gradle JVM args, AndroidX flags, resource optimization settings
+│   ├── local.properties                        <-- SDK location (sdk.dir)
+│   ├── README.md                               <-- Project documentation & screenshots
+│   ├── CONTRIBUTORS.md                         <-- Project contributors
+│   ├── screenshots/                            <-- UI screenshots (home, axw surf, wpset, settings)
+│   └── app/
+│       ├── build.gradle                        <-- App module build config (dependencies, buildTypes, signing)
+│       ├── proguard-rules.pro                  <-- R8/ProGuard rules (models, Coil, profileinstaller)
+│       └── src/
+│           └── main/
+│               ├── AndroidManifest.xml         <-- App manifest (permissions, application class, activities)
+│               ├── baseline-prof.txt           <-- AOT Baseline Profile rules for instant startup & smooth navigation
+│               ├── assets/
+│               │   └── wallpapers/             <-- Bundled curated offline collections
+│               │       ├── Alya/               <-- Character folder (alya_00.jpg, ...)
+│               │       ├── Asuka/              <-- Character folder (asuka_*.png/jpg)
+│               │       ├── Kurumi/             <-- Character folder (kurumi_*.png)
+│               │       ├── Lumine/             <-- Character folder (lumine_*.png/jpg)
+│               │       ├── Miku/               <-- Character folder (IMG_*.jpg)
+│               │       ├── Random/             <-- Curated eclectic anime wallpapers
+│               │       └── Saber/              <-- Character folder (saber_*.png/jpg)
+│               ├── res/
+│               │   ├── drawable/               <-- App icons, splash vector, background/foreground assets
+│               │   │   ├── app_icon.png
+│               │   │   ├── ic_launcher_background.xml
+│               │   │   ├── ic_launcher_foreground.xml
+│               │   │   └── ic_splash_logo.xml   <-- Native splash centered at 176dp inside 192dp circle
+│               │   ├── mipmap-*/               <-- Launcher mipmap icons (adaptive & round)
+│               │   ├── values/                 <-- strings.xml, colors.xml, themes.xml
+│               │   ├── values-night/           <-- Night mode colors
+│               │   ├── values-v31/             <-- Android 12+ dynamic native splash screen theme
+│               │   └── xml/                    <-- file_paths.xml (FileProvider), backup_rules, data_extraction
+│               └── java/com/axwhaven/walls/
+│                   ├── AxWhavenApp.kt          <-- Application class (Coil ImageLoader setup)
+│                   ├── MainActivity.kt         <-- Root activity, edge-to-edge, root scaffold, page transitions
+│                   ├── WallpaperViewModel.kt   <-- Central ViewModel & WallpaperUiState holder
+│                   ├── model/
+│                   │   └── Models.kt           <-- Core domain data classes & enums
+│                   ├── data/
+│                   │   ├── WallpaperRemoteClient.kt     <-- HTTP scraper & JSON client for 8 booru/wallpaper APIs
+│                   │   └── WallpaperStorageRepository.kt <-- Local filesystem, asset crawler & SAF manager
+│                   ├── wallpaper/
+│                   │   └── WallpaperApplier.kt <-- WallpaperManager integration (Home/Lock/Both, scaling/crop)
+│                   └── ui/
+│                       ├── theme/
+│                       │   ├── Color.kt            <-- Color constants
+│                       │   ├── Type.kt             <-- Typography definitions
+│                       │   ├── ExpressiveMotion.kt <-- M3 Expressive physics springs (Fast/Default/Slow Spatial & Effects)
+│                       │   ├── ThemeConfig.kt      <-- Theme tokens, clearance constants, palettes, AxWhavenColors
+│                       │   └── Theme.kt            <-- AxWhavenDynamicTheme composable & composition locals
+│                       ├── components/
+│                       │   ├── BottomNavBar.kt     <-- Floating bottom dock with liquid spring pill
+│                       │   ├── GlassmorphicBadge.kt <-- Translucent badge with glowing accent dots
+│                       │   ├── M3ExpressiveMorphingLoader.kt <-- Android 17 morphing loading indicator
+│                       │   └── WallpaperImage.kt   <-- Coil Image composable with caching & blur support
+│                       └── screens/
+│                           ├── HomeScreen.kt             <-- Collections & All Wallpapers grid + Dice action
+│                           ├── HavenSurfScreen.kt        <-- Online discovery feed, search, tags, filters, cookies
+│                           ├── SettingsScreen.kt         <-- Theme mode, Pixel palette swatches, SAF storage, blur
+│                           └── WallpaperPreviewScreen.kt <-- Full-screen preview, pinch/pan, Fit/Fill, Apply modal
+```
+
+---
+
+## Part 3: UI Files & Responsibilities Breakdown
+
+### 1. Root & Navigation
+* **`MainActivity.kt`**
+  - **Role:** Application entry point and root composable host.
+  - **Responsibilities:**
+    - Initializes Android 12+ native splash screen (`installSplashScreen()`) with state readiness gate.
+    - Sets edge-to-edge system insets (`enableEdgeToEdge()`).
+    - Configures root `BackHandler`: exits only on Home tab root; gracefully traverses through active wallpaper preview -> filter bottom sheet -> collection detail folder -> previous tabs.
+    - Manages SAF directory pickers for custom storage and pre-uninstall wallpaper backup.
+    - Renders ambient luminous radial gradient backdrops (optimized for zero redundant blur passes).
+    - Hosts the root `Scaffold` and floating dock `AxWhavenBottomNavBar`.
+    - Coordinates directional horizontal page transitions (`slideInHorizontally` + `scaleIn` + `fadeIn` powered by `ExpressiveMotion.DefaultSpatialIntOffset/Float`).
+    - Houses the full-screen `WallpaperPreviewScreen` modal layer above the scaffold.
+
+### 2. Design System & Theme Engine
+* **`ui/theme/ThemeConfig.kt`**
+  - **Role:** Single source of truth for design tokens, themes, and dynamic palettes.
+  - **Key Tokens & Constants:**
+    - `FloatingDockClearance = 150.dp`: Universal bottom padding ensuring scrollable lists are never obscured by the floating dock.
+    - `AppThemeMode`: `EXPRESSIVE` (M3 dynamic tonal surfaces), `AMOLED_BLACK` (pure #000000 OLED), and `FROSTED_GLASS` (translucent frosted acrylic).
+    - `PixelPaletteSeed`: 6 Pixel-style swatches (`SYSTEM`, `LAVENDER`, `GOLDEN_AMBER`, `SAKURA_ROSE`, `CYBER_CYAN`, `MONOCHROME`).
+    - `AxWhavenColors`: Unified color contract providing background, surface, surfaceElevated, cardBorder, glassBlur, primaryAccent, textPrimary, textSecondary, etc.
+* **`ui/theme/ExpressiveMotion.kt`**
+  - **Role:** Physics-based animation tokens adhering to Material 3 Expressive guidelines.
+  - **Spatial Springs (Damping 0.6–0.8 with natural overshoot for position, size, scale):**
+    - `FastSpatial`: `dampingRatio = 0.6f`, `stiffness = 800f` (pill sliders, dice button, icon pops).
+    - `DefaultSpatial`: `dampingRatio = 0.8f`, `stiffness = 380f` (page slides, header collapsing).
+    - `SlowSpatial`: `dampingRatio = 0.8f`, `stiffness = 200f` (full-screen sheet expansions).
+  - **Effects Springs (Critically damped, Damping = 1.0f with zero bounce for color, alpha, elevation):**
+    - `FastEffects`: `dampingRatio = 1.0f`, `stiffness = 3800f` (press highlights, icon tints).
+    - `DefaultEffects`: `dampingRatio = 1.0f`, `stiffness = 1600f` (fades, container color shifts).
+* **`ui/theme/Theme.kt`**
+  - **Role:** Applies Material 3 `MaterialTheme` and binds `LocalAxWhavenColors`.
+* **`ui/theme/Type.kt`**
+  - **Role:** Defines typography hierarchy using Material 3 Expressive type scales.
+* **`ui/theme/Color.kt`**
+  - **Role:** Low-level color definitions and hex constants.
+
+### 3. Reusable UI Components
+* **`ui/components/BottomNavBar.kt`**
+  - **Composables:** `AxWhavenBottomNavBar`, `NavBarItem`.
+  - **Responsibilities:**
+    - Floating pill navigation dock (Home, AxW Surf, Settings).
+    - Liquid stretch sliding pill indicator that morphs in the direction of motion.
+    - Optimized draw-phase execution: reads animated tab indices strictly inside `Modifier.graphicsLayer { ... }` to guarantee 0 recompositions during 60–120Hz spring motion.
+    - Layout-phase icon offset via `.offset { IntOffset(0, y) }` and haptic feedback triggers (`HapticFeedbackType.TextHandleMove`).
+* **`ui/components/GlassmorphicBadge.kt`**
+  - **Composables:** `GlassmorphicBadge`.
+  - **Responsibilities:** Renders frosted glass badges on collection and wallpaper cards with glowing status dots.
+* **`ui/components/M3ExpressiveMorphingLoader.kt`**
+  - **Composables:** `M3ExpressiveMorphingLoader`, `ContainedLoadingIndicatorFallback`.
+  - **Responsibilities:** Smooth shape-morphing loading spinner matching Android 17 Google Pixel expressive guidelines.
+* **`ui/components/WallpaperImage.kt`**
+  - **Composables:** `WallpaperImage`.
+  - **Responsibilities:** Efficient Coil image rendering with placeholder crossfade, hardware bitmap support, error recovery, and optional background blur scaling.
+
+### 4. Primary App Screens
+* **`ui/screens/HomeScreen.kt`**
+  - **Composables:** `HomeScreen`, `CleanWallpaperCard`, `CollectionArtCard`, `StandaloneDiceButton`, `RandomDieTargetDialog`, `DieOptionButton`.
+  - **Responsibilities:**
+    - Displays offline curated collections and wallpaper grids.
+    - Smooth scroll-responsive collapsing header: header and dice button vanish seamlessly on scroll down and reappear on scroll up.
+    - Segmented pill tab switcher (All Wallpapers vs Collections) with spring sliding indicator.
+    - Random dice roll button with physics-based roll animation and target selection modal (Home, Lock, Both).
+    - Interactive card press morphing (squircle corner radius expands from 20.dp to 28.dp on press).
+    - Explicit `contentType = { "wallpaper_card" }` for optimal `LazyVerticalGrid` recycling.
+* **`ui/screens/HavenSurfScreen.kt`**
+  - **Composables:** `HavenSurfScreen`, `HavenSurfResultCard`, `HavenSurfFilterModalSheet`, `FilterPillItem`, `ProviderCookieDialog`, `DownloadQualityDialog`, `DownloadOptionCard`.
+  - **Responsibilities:**
+    - Online discovery feed across 8 anime wallpaper/booru engines.
+    - Pill-shaped search bar with real-time tag query suggestions and keyboard visibility awareness.
+    - Horizontal provider selector with interactive chip morphing and badge counts.
+    - Two-column staggered/vertical wallpaper grid with infinite scrolling pagination.
+    - Download button with interactive progress loader, checkmark completion animations, and download quality modal (Original vs Compressed).
+    - Built-in cookie bypass dialogs for Cloudflare-protected providers (Konachan, Danbooru).
+    - Filter bottom sheet (`HavenSurfFilterModalSheet`) for aspect ratio, resolution, and content rating.
+* **`ui/screens/SettingsScreen.kt`**
+  - **Composables:** `SettingsScreen`, `PixelPaletteSwatch`, `ExpressiveFilterChip`, `ExpressiveActionButton`, `SettingsSectionHeader`.
+  - **Responsibilities:**
+    - Appearance customization: Theme mode picker (Material 3 Expressive, AMOLED Black, Frosty Glass).
+    - Pixel-style 6-swatch Color Palette row (System, Lavender, Golden Amber, Sakura Rose, Cyber Cyan, Monochrome) with outer selection rings.
+    - Background blur slider with tactile snap ticks and interactive spring physics.
+    - Custom Storage Access Framework (SAF) folder picker, default reset, and live storage statistics.
+    - Wallpaper backup actions (Export to Pictures / External Folder) and clean uninstall helper.
+* **`ui/screens/WallpaperPreviewScreen.kt`**
+  - **Composables:** `WallpaperPreviewScreen`, `TargetSelectionModalDialog`, `SegmentedTargetOptionRow`.
+  - **Responsibilities:**
+    - Immersive edge-to-edge wallpaper preview modal.
+    - Gesture-driven zoom and pan with spring-back physics.
+    - Aspect ratio display mode toggle: Screen Fit (contain) vs Screen Fill (crop).
+    - "Set Wallpaper" action launching `TargetSelectionModalDialog` (Home Screen, Lock Screen, Both Screens) with haptic feedback.
+    - Options to set as in-app custom background wallpaper or launch the system wallpaper picker.
+
+---
+
+## Part 4: State Management & Data Flow
+
+```
++-------------------------------------------------------------------------------+
+|                             WallpaperViewModel                                |
+|  - Holds mutable StateFlow<WallpaperUiState>                                  |
+|  - Interacts with WallpaperStorageRepository, RemoteClient, WallpaperApplier  |
++-------------------------------------------------------------------------------+
+                                      │
+                                      ▼ StateFlow.collectAsState()
++-------------------------------------------------------------------------------+
+|                                MainActivity                                   |
+|  - Observes: uiState, activePreviewItem, tabNavigationHistory                 |
+|  - Provides: AxWhavenDynamicTheme, Scaffold, AxWhavenBottomNavBar             |
++-------------------------------------------------------------------------------+
+              │                               │                           │
+              ▼                               ▼                           ▼
+      HomeScreen.kt                  HavenSurfScreen.kt           SettingsScreen.kt
+  - uiState.directories          - uiState.remoteResults       - uiState.currentTheme
+  - uiState.selectedDirectory    - uiState.activeProvider      - uiState.currentPalette
+  - uiState.homeTab              - uiState.filterState         - uiState.backgroundBlur
+  - onWallpaperPreview           - uiState.downloadingItemIds  - onSelectDownloadFolder
+                                 - onDownloadItem
+```
+
+---
+
+## Part 5: Master Refinement Prompt for AI Models
+
+*(Copy and use the prompt below when instructing an AI agent or engineer to refine or extend AxWhaven)*
+
+```markdown
+# AxWhaven Refinement Master Prompt
+
+## Role Definition
+You are a Senior Android & Jetpack Compose Engineer specializing in Material 3 Expressive, high-performance UI rendering, and Android system architecture. You are tasked with refining, enhancing, or extending the **AxWhaven** wallpaper manager application.
+
+---
+
+## Critical Rules of Engagement (Zero Guessing & Strict Verification)
+
+1. **Inspect Codebase First:**
+   - Always read the relevant existing files before modifying anything (`MainActivity.kt`, `WallpaperViewModel.kt`, `ThemeConfig.kt`, `ExpressiveMotion.kt`, and the target screen/component).
+   - Never hypothesize APIs, signatures, or existing state fields. Look at `Models.kt` and `WallpaperUiState` directly.
+
+2. **Preserve Architecture & Design Language:**
+   - Do NOT rewrite existing working systems or replace MVVM / StateFlow architecture.
+   - Maintain the dual aesthetic: **Material 3 Expressive** (tonal surfaces, squircle-to-pill shape morphing, spring physics) + **Frosted Glassmorphism** (translucent acrylic surfaces, prismatic borders, glowing accent badges).
+   - Never remove or regress `FloatingDockClearance = 150.dp` on scrollable content; the floating dock must never obscure cards or buttons.
+   - Never hardcode animation specs. Always reuse tokens from `ExpressiveMotion` (`FastSpatial`, `DefaultSpatial`, `SlowSpatial`, `FastEffects`, `DefaultEffects`).
+
+3. **Performance & Composition Hygiene:**
+   - Defer animation state reads to the draw phase (`Modifier.graphicsLayer { ... }`) or layout phase (`Modifier.offset { ... }`) whenever animating values continuously (e.g. during scroll or spring motion).
+   - Always provide `key` and `contentType` parameters inside `items(...)` for all `LazyVerticalGrid` and `LazyRow` composables.
+   - Keep radial gradients soft without stacking redundant full-screen `Modifier.blur` layers.
+   - Preserve Coil caching policies (25% memory cache, 150MB disk cache, hardware bitmaps).
+
+4. **Safety & Git Hygiene:**
+   - Never print, log, or expose GitHub personal access tokens.
+   - When pushing to git, always reset the remote origin to the public URL immediately after push: `git remote set-url origin https://github.com/GreatLuv/AxWhaven.git`.
+   - Ensure the app compiles cleanly:
+     - Debug: `studio build . :app:assembleDebug`
+     - Release: `studio build . clean :app:assembleRelease`
+
+---
+
+## Core Refinement Focus Areas
+
+When working on any feature or fix, adhere to these screen-specific standards:
+
+### 1. Home Screen (`HomeScreen.kt`)
+- **Scroll Behavior:** Maintain the directional vanishing header and dice button (hides smoothly on downward scroll, springs back on upward scroll).
+- **Collection Cards:** Preserve `CollectionArtCard` with dynamic item count badges, gradient scrim overlays, and smooth corner morphing (`20.dp` rest -> `28.dp` pressed).
+- **Dice Roll Action:** Preserve 3D/physics dice roll animation and target dialog (`RandomDieTargetDialog`).
+
+### 2. AxW Surf Screen (`HavenSurfScreen.kt`)
+- **Search & Auto-Suggestions:** Keep query suggestions debounced and responsive. Dismiss keyboard cleanly without UI bounce when searching or scrolling.
+- **Provider Switching:** Support all 8 providers (`WALLHAVEN`, `YANDERE`, `KONACHAN`, `SAFEBOORU`, `PIXIV`, `ANIME_PICTURES`, `GELBOORU`, `DANBOORU`).
+- **Cloudflare Cookie Bypass:** Maintain `ProviderCookieDialog` for Konachan and Danbooru with secure cookie input and local persistence.
+- **Download Feedback:** Preserve download progress states (`downloadingItemIds`) and instant cached status (`downloadedItemIds`).
+
+### 3. Wallpaper Preview & Applier (`WallpaperPreviewScreen.kt` & `WallpaperApplier.kt`)
+- **Fullscreen Experience:** Hide the floating bottom dock during preview.
+- **Scaling Modes:** Provide seamless switching between Fit (untruncated contain) and Fill (immersive crop).
+- **Application Targets:** Support Home screen (`FLAG_SYSTEM`), Lock screen (`FLAG_LOCK`), and Both (`FLAG_SYSTEM or FLAG_LOCK`).
+- **System Wallpaper Picker:** Fallback gracefully to `WallpaperManager.getCropAndSetWallpaperIntent()` when the user opts for system cropping.
+
+### 4. Settings Screen (`SettingsScreen.kt`)
+- **Theme Switcher:** Seamlessly switch between Expressive, AMOLED Black, and Frosty Glass.
+- **Palette Swatches:** Ensure all 6 swatches (System, Lavender, Golden Amber, Sakura Rose, Cyber Cyan, Monochrome) fit cleanly across the card with no clipping.
+- **Background Blur Slider:** Provide real-time slider physics with haptic ticks (`HapticFeedbackType.TextHandleMove`).
+- **SAF & Storage:** Ensure folder selection preserves persistable URI permissions (`takePersistableUriPermission`).
+
+---
+
+## Verification & Output Checklist
+After executing changes:
+1. Run `./gradlew assembleDebug` (or `studio build . :app:assembleDebug`) and ensure 0 compilation errors.
+2. Verify certificate fingerprint matches `0cfefa54881ce2e942acdc12fb441927fdde8ee12450e68e43a28c0b0101ace6` on signed builds.
+3. Verify zero regressions on:
+   - Native splash screen (`ic_splash_logo.xml` safe zone 176dp inside 192dp circle).
+   - Bottom dock navigation responsiveness (0 lag on cold start).
+   - Frosted glass visuals, border highlights, and bottom dock clearance (`150.dp`).
+```

@@ -512,40 +512,31 @@ class WallpaperRemoteClient(private val context: Context) {
                 ContentRating.ALL -> Unit
             }
             val baseQuery = "limit=40&page=$page&tags=${urlEncode(tags.joinToString(" "))}"
-            val hasAuth = !danbooruLogin.isNullOrBlank() && !danbooruApiKey.isNullOrBlank()
+            val url = "https://danbooru.donmai.us/posts.json?$baseQuery"
 
-            val url = if (hasAuth) {
-                "https://danbooru.donmai.us/posts.json?$baseQuery&login=${urlEncode(danbooruLogin!!)}&api_key=${urlEncode(danbooruApiKey!!)}"
-            } else {
-                "https://danbooru.donmai.us/posts.json?$baseQuery"
-            }
-
-            val body: String = if (hasAuth) {
-                val basicAuth = "Basic " + android.util.Base64.encodeToString(
-                    "${danbooruLogin}:${danbooruApiKey}".toByteArray(),
-                    android.util.Base64.NO_WRAP
-                )
-                val authHeaders = mapOf(
-                    "Authorization" to basicAuth,
-                    "Referer" to "https://danbooru.donmai.us/posts",
-                    "User-Agent" to "AxWhaven/1.1.0 (by $danbooruLogin on danbooru)"
-                )
+            val body: String = try {
+                DanbooruBridge.fetchJson(context, url)
+            } catch (bridgeErr: Exception) {
                 try {
-                    httpGet(url, authHeaders)
-                } catch (e: Exception) {
-                    DanbooruBridge.fetchJson(context, url)
-                }
-            } else {
-                try {
-                    DanbooruBridge.fetchJson(context, url)
-                } catch (bridgeErr: Exception) {
-                    try {
-                        httpGet(url, mapOf("Referer" to "https://danbooru.donmai.us/posts"))
-                    } catch (httpErr: Exception) {
+                    val danbooruHeaders = mapOf(
+                        "User-Agent" to "AxWhaven/1.1.0 (Android wallpaper app; github.com/GreatLuv/AxWhaven)",
+                        "Referer" to "https://danbooru.donmai.us/posts",
+                        "Accept" to "application/json"
+                    )
+                    httpGet(url, danbooruHeaders)
+                } catch (httpErr: Exception) {
+                    val isChallenge = bridgeErr.message?.contains("403") == true ||
+                            bridgeErr.message?.contains("Cloudflare", ignoreCase = true) == true ||
+                            bridgeErr.message?.contains("timed out", ignoreCase = true) == true ||
+                            httpErr.message?.contains("403") == true ||
+                            httpErr.message?.contains("Cloudflare", ignoreCase = true) == true
+                    if (isChallenge) {
                         throw IllegalStateException(
-                            "Danbooru requires verification or API key. Tap key icon to authenticate.",
+                            "Danbooru requires Cloudflare verification. Complete in-app captcha to continue.",
                             bridgeErr
                         )
+                    } else {
+                        throw bridgeErr
                     }
                 }
             }
